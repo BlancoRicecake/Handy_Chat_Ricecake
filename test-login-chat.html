@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login & Chat Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .hidden {
+            display: none;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        input[type="text"], input[type="password"] {
+            width: 250px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px 20px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        #messages {
+            border: 1px solid #ccc;
+            padding: 10px;
+            min-height: 300px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .message.sent {
+            background: #e3f2fd;
+            text-align: right;
+        }
+        .message.received {
+            background: #fff3cd;
+        }
+        .message img {
+            max-width: 300px;
+            max-height: 300px;
+            border-radius: 5px;
+            margin-top: 5px;
+            cursor: pointer;
+        }
+        .upload-section {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+        .upload-status {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Login & Real-time Chat Test</h1>
+
+    <!-- Auth Section -->
+    <div id="authSection" class="section">
+        <h2>인증</h2>
+        <div id="authStatus" class="status info">로그인이 필요합니다</div>
+
+        <div>
+            <h3>회원가입</h3>
+            <input type="text" id="regUsername" placeholder="사용자명 (최소 3자)"><br>
+            <input type="password" id="regPassword" placeholder="비밀번호 (최소 6자)"><br>
+            <button onclick="register()">회원가입</button>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <h3>로그인</h3>
+            <input type="text" id="loginUsername" placeholder="사용자명"><br>
+            <input type="password" id="loginPassword" placeholder="비밀번호"><br>
+            <button onclick="login()">로그인</button>
+        </div>
+
+        <div style="margin-top: 10px;">
+            <small>현재 토큰: <span id="tokenDisplay">없음</span></small><br>
+            <button onclick="logout()">로그아웃</button>
+        </div>
+    </div>
+
+    <!-- Chat Section -->
+    <div id="chatSection" class="section hidden">
+        <h2>채팅</h2>
+        <div id="chatStatus" class="status info">연결 대기 중...</div>
+
+        <div>
+            <label>Room ID: <input type="text" id="roomId" value="demo-room-1"></label><br>
+            <button onclick="connectChat()">채팅 연결</button>
+            <button onclick="disconnectChat()">연결 해제</button>
+        </div>
+
+        <div style="margin-top: 15px;">
+            <input type="text" id="messageText" placeholder="메시지 입력" style="width: 70%;">
+            <button onclick="sendMessage()">전송</button>
+        </div>
+
+        <div class="upload-section">
+            <h4>이미지 업로드</h4>
+            <input type="file" id="fileInput" accept="image/*">
+            <button onclick="uploadAndSendImage()">이미지 전송</button>
+            <div id="uploadStatus" class="upload-status"></div>
+        </div>
+
+        <div style="margin-top: 15px;">
+            <h3>메시지</h3>
+            <div id="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://localhost:8443';
+        let socket = null;
+        let currentUser = null;
+
+        // Initialize
+        window.onload = function() {
+            const token = localStorage.getItem('token');
+            const username = localStorage.getItem('username');
+            if (token && username) {
+                currentUser = { token, username };
+                updateAuthUI(true);
+            }
+        };
+
+        function updateStatus(elementId, message, type = 'info') {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = 'status ' + type;
+        }
+
+        function updateAuthUI(loggedIn) {
+            if (loggedIn) {
+                document.getElementById('tokenDisplay').textContent =
+                    currentUser.token.substring(0, 20) + '...';
+                document.getElementById('authSection').querySelector('.status').textContent =
+                    `로그인됨: ${currentUser.username}`;
+                document.getElementById('authSection').querySelector('.status').className = 'status success';
+                document.getElementById('chatSection').classList.remove('hidden');
+            } else {
+                document.getElementById('tokenDisplay').textContent = '없음';
+                updateStatus('authStatus', '로그인이 필요합니다', 'info');
+                document.getElementById('chatSection').classList.add('hidden');
+                if (socket) {
+                    socket.disconnect();
+                    socket = null;
+                }
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+
+            if (!username || !password) {
+                updateStatus('authStatus', '사용자명과 비밀번호를 입력하세요', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || '회원가입 실패');
+                }
+
+                const data = await response.json();
+                currentUser = { token: data.token, username: data.username };
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('username', data.username);
+
+                updateAuthUI(true);
+                updateStatus('authStatus', `회원가입 성공! (${data.username})`, 'success');
+
+                // Clear form
+                document.getElementById('regUsername').value = '';
+                document.getElementById('regPassword').value = '';
+            } catch (error) {
+                updateStatus('authStatus', `회원가입 실패: ${error.message}`, 'error');
+            }
+        }
+
+        async function login() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (!username || !password) {
+                updateStatus('authStatus', '사용자명과 비밀번호를 입력하세요', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        throw new Error('잘못된 사용자명 또는 비밀번호');
+                    }
+                    const error = await response.json();
+                    throw new Error(error.message || '로그인 실패');
+                }
+
+                const data = await response.json();
+                currentUser = { token: data.token, username: data.username };
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('username', data.username);
+
+                updateAuthUI(true);
+                updateStatus('authStatus', `로그인 성공! (${data.username})`, 'success');
+
+                // Clear form
+                document.getElementById('loginPassword').value = '';
+            } catch (error) {
+                updateStatus('authStatus', `로그인 실패: ${error.message}`, 'error');
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            updateAuthUI(false);
+            updateStatus('authStatus', '로그아웃되었습니다', 'info');
+        }
+
+        function addMessage(text, type = 'info', imageUrl = null) {
+            const messagesDiv = document.getElementById('messages');
+            const msg = document.createElement('div');
+            msg.className = 'message ' + type;
+
+            const timestamp = document.createElement('div');
+            timestamp.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            msg.appendChild(timestamp);
+
+            if (imageUrl) {
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.alt = 'Uploaded image';
+                img.onclick = () => window.open(imageUrl, '_blank');
+                msg.appendChild(img);
+            }
+
+            messagesDiv.appendChild(msg);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function connectChat() {
+            if (!currentUser || !currentUser.token) {
+                updateStatus('chatStatus', '먼저 로그인하세요', 'error');
+                return;
+            }
+
+            if (socket && socket.connected) {
+                updateStatus('chatStatus', '이미 연결되어 있습니다', 'info');
+                return;
+            }
+
+            const roomId = document.getElementById('roomId').value;
+            updateStatus('chatStatus', '연결 중...', 'info');
+
+            socket = io(API_URL, {
+                auth: { token: currentUser.token },
+                transports: ['websocket', 'polling'],
+                rejectUnauthorized: false
+            });
+
+            socket.on('connect', () => {
+                updateStatus('chatStatus', '✅ WebSocket 연결 성공!', 'success');
+                addMessage('서버에 연결되었습니다');
+
+                socket.emit('join', { roomId });
+                addMessage(`방 ${roomId}에 입장했습니다`);
+            });
+
+            socket.on('disconnect', () => {
+                updateStatus('chatStatus', '연결이 끊어졌습니다', 'error');
+                addMessage('서버 연결이 끊어졌습니다');
+            });
+
+            socket.on('error', (error) => {
+                updateStatus('chatStatus', '에러: ' + error, 'error');
+                addMessage('에러 발생: ' + error);
+            });
+
+            socket.on('message', (data) => {
+                const isMe = data.senderId === currentUser.username;
+                const senderName = isMe ? '나' : data.senderId;
+
+                if (data.type === 'image') {
+                    addMessage(`${senderName}: [이미지]`, isMe ? 'sent' : 'received', data.fileUrl);
+                } else {
+                    addMessage(`${senderName}: ${data.text || JSON.stringify(data)}`, isMe ? 'sent' : 'received');
+                }
+            });
+
+            socket.on('ack', (data) => {
+                addMessage(`✓ 메시지 전송 확인`);
+            });
+
+            socket.on('typing', (data) => {
+                addMessage(`⌨️ ${data.userId} is typing...`);
+            });
+
+            socket.on('presence', (data) => {
+                addMessage(`👤 ${data.userId} ${data.state === 'join' ? 'joined' : 'left'}`);
+            });
+        }
+
+        function disconnectChat() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                updateStatus('chatStatus', '연결 해제됨', 'info');
+            }
+        }
+
+        function sendMessage() {
+            if (!socket || !socket.connected) {
+                updateStatus('chatStatus', '먼저 채팅에 연결하세요', 'error');
+                return;
+            }
+
+            const roomId = document.getElementById('roomId').value;
+            const text = document.getElementById('messageText').value;
+
+            if (!text.trim()) return;
+
+            const clientMessageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+            socket.emit('message', {
+                roomId,
+                clientMessageId,
+                type: 'text',
+                text
+            });
+
+            document.getElementById('messageText').value = '';
+        }
+
+        async function uploadAndSendImage() {
+            if (!socket || !socket.connected) {
+                updateStatus('chatStatus', '먼저 채팅에 연결하세요', 'error');
+                return;
+            }
+
+            if (!currentUser || !currentUser.token) {
+                updateStatus('chatStatus', '먼저 로그인하세요', 'error');
+                return;
+            }
+
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                document.getElementById('uploadStatus').textContent = '파일을 선택하세요';
+                return;
+            }
+
+            try {
+                // Step 1: Get presigned URL
+                document.getElementById('uploadStatus').textContent = 'Presigned URL 요청 중...';
+
+                const presignedResponse = await fetch(`${API_URL}/storage/presigned-upload`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.token}`
+                    },
+                    body: JSON.stringify({
+                        fileName: file.name,
+                        fileType: file.type
+                    })
+                });
+
+                if (!presignedResponse.ok) {
+                    throw new Error('Presigned URL 생성 실패');
+                }
+
+                const { uploadUrl, fileUrl, key } = await presignedResponse.json();
+
+                // Step 2: Upload file to MinIO
+                document.getElementById('uploadStatus').textContent = '파일 업로드 중...';
+
+                const uploadResponse = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': file.type
+                    },
+                    body: file
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error('파일 업로드 실패');
+                }
+
+                // Step 3: Send message with image
+                document.getElementById('uploadStatus').textContent = '메시지 전송 중...';
+
+                const roomId = document.getElementById('roomId').value;
+                const clientMessageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+                socket.emit('message', {
+                    roomId,
+                    clientMessageId,
+                    type: 'image',
+                    fileUrl: fileUrl,
+                    fileName: file.name,
+                    fileType: file.type
+                });
+
+                document.getElementById('uploadStatus').textContent = '✓ 이미지 전송 완료!';
+                fileInput.value = ''; // Clear file input
+
+                setTimeout(() => {
+                    document.getElementById('uploadStatus').textContent = '';
+                }, 3000);
+
+            } catch (error) {
+                document.getElementById('uploadStatus').textContent = `✗ 에러: ${error.message}`;
+                console.error('Upload error:', error);
+            }
+        }
+
+        // Enter 키로 메시지 전송
+        document.getElementById('messageText').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>

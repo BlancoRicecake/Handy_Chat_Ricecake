@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTPS WebSocket Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        input, button { padding: 8px; margin: 5px 0; }
+        #messages { border: 1px solid #ccc; padding: 10px; min-height: 200px; max-height: 400px; overflow-y: auto; }
+        .message { margin: 5px 0; padding: 5px; background: #f8f9fa; }
+    </style>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>로컬 스테이징 시뮬레이션 테스트</h1>
+
+    <div id="status" class="status info">
+        연결 대기 중...
+    </div>
+
+    <div>
+        <h3>설정</h3>
+        <label>Room ID: <input type="text" id="roomId" value="demo-room-1"></label><br>
+        <label>JWT Token: <input type="text" id="token" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMSIsImlhdCI6MTc2MjU4NzcyMywiZXhwIjoxNzYzMTkyNTIzfQ.MslCW2a62wlqaGYoVzE-mkCL5KrRqAVc7TNZdXfYy-I"></label><br>
+        <button onclick="connect()">연결</button>
+        <button onclick="disconnect()">연결 해제</button>
+    </div>
+
+    <div>
+        <h3>메시지 전송</h3>
+        <input type="text" id="messageText" placeholder="메시지 입력" style="width: 70%;">
+        <button onclick="sendMessage()">전송</button>
+    </div>
+
+    <div>
+        <h3>메시지</h3>
+        <div id="messages"></div>
+    </div>
+
+    <div>
+        <h3>보안 검증</h3>
+        <ul id="securityChecks">
+            <li>HTTPS 연결: <span id="httpsCheck">확인 중...</span></li>
+            <li>WSS (Secure WebSocket): <span id="wssCheck">확인 중...</span></li>
+            <li>보안 헤더: <span id="headersCheck">확인 중...</span></li>
+        </ul>
+    </div>
+
+    <script>
+        let socket = null;
+        const API_URL = 'https://localhost:8443';
+
+        // HTTPS 확인
+        if (window.location.protocol === 'file:') {
+            document.getElementById('httpsCheck').textContent = '파일 프로토콜 (로컬 파일)';
+        } else if (window.location.protocol === 'https:') {
+            document.getElementById('httpsCheck').textContent = '✅ 활성화됨';
+        } else {
+            document.getElementById('httpsCheck').textContent = '❌ HTTP 사용 중';
+        }
+
+        function updateStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+        function addMessage(text) {
+            const messagesDiv = document.getElementById('messages');
+            const msg = document.createElement('div');
+            msg.className = 'message';
+            msg.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            messagesDiv.appendChild(msg);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        async function checkSecurityHeaders() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const headers = response.headers;
+
+                const hasCSP = headers.has('content-security-policy');
+                const hasHSTS = headers.has('strict-transport-security');
+                const hasXFrame = headers.has('x-frame-options');
+
+                if (hasCSP && hasHSTS && hasXFrame) {
+                    document.getElementById('headersCheck').textContent = '✅ 적용됨 (CSP, HSTS, X-Frame-Options)';
+                } else {
+                    document.getElementById('headersCheck').textContent = '⚠️ 일부 헤더 누락';
+                }
+            } catch (error) {
+                document.getElementById('headersCheck').textContent = '❌ 확인 실패: ' + error.message;
+            }
+        }
+
+        function connect() {
+            if (socket && socket.connected) {
+                updateStatus('이미 연결되어 있습니다', 'info');
+                return;
+            }
+
+            const roomId = document.getElementById('roomId').value;
+            const token = document.getElementById('token').value;
+
+            updateStatus('연결 중...', 'info');
+
+            socket = io(API_URL, {
+                auth: { token },
+                transports: ['websocket', 'polling'],
+                rejectUnauthorized: false // 자체 서명 인증서를 위해
+            });
+
+            socket.on('connect', () => {
+                updateStatus('✅ WebSocket 연결 성공!', 'success');
+                document.getElementById('wssCheck').textContent = '✅ WSS 연결 활성화';
+                addMessage('서버에 연결되었습니다');
+
+                socket.emit('join', { roomId });
+                addMessage(`방 ${roomId}에 입장했습니다`);
+            });
+
+            socket.on('disconnect', () => {
+                updateStatus('연결이 끊어졌습니다', 'error');
+                document.getElementById('wssCheck').textContent = '❌ 연결 끊김';
+                addMessage('서버 연결이 끊어졌습니다');
+            });
+
+            socket.on('error', (error) => {
+                updateStatus('에러: ' + error, 'error');
+                addMessage('에러 발생: ' + error);
+            });
+
+            socket.on('message', (data) => {
+                addMessage(`📩 수신: ${data.text || JSON.stringify(data)}`);
+            });
+
+            socket.on('ack', (data) => {
+                addMessage(`✓ ACK: ${data.clientMessageId}`);
+            });
+
+            socket.on('typing', (data) => {
+                addMessage(`⌨️ ${data.userId} is typing...`);
+            });
+
+            socket.on('presence', (data) => {
+                addMessage(`👤 ${data.userId} ${data.state === 'join' ? 'joined' : 'left'}`);
+            });
+
+            // 보안 헤더 확인
+            checkSecurityHeaders();
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                updateStatus('연결 해제됨', 'info');
+            }
+        }
+
+        function sendMessage() {
+            if (!socket || !socket.connected) {
+                updateStatus('먼저 연결하세요', 'error');
+                return;
+            }
+
+            const roomId = document.getElementById('roomId').value;
+            const text = document.getElementById('messageText').value;
+
+            if (!text.trim()) return;
+
+            const clientMessageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+            socket.emit('message', {
+                roomId,
+                clientMessageId,
+                type: 'text',
+                text
+            });
+
+            addMessage(`📤 전송: ${text}`);
+            document.getElementById('messageText').value = '';
+        }
+
+        // Enter 키로 메시지 전송
+        document.getElementById('messageText').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+{"version":3,"file":"room.schema.d.ts","sourceRoot":"","sources":["../../src/rooms/room.schema.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,gBAAgB,EAAE,MAAM,UAAU,CAAC;AAE5C,MAAM,MAAM,YAAY,GAAG,gBAAgB,CAAC,IAAI,CAAC,CAAC;AAElD,qBACa,IAAI;IAEf,OAAO,EAAG,MAAM,EAAE,CAAC;IAGnB,WAAW,CAAC,EAAE,MAAM,CAAC;CACtB;AAED,eAAO,MAAM,UAAU;;;;;;;;EAAqC,CAAC"}
