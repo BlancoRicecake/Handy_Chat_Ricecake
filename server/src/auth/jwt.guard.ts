@@ -38,7 +38,7 @@ export class JwtGuard implements CanActivate {
 
       return true;
     } catch (error) {
-      this.logger.warn(`JWT validation failed: ${error.message}`);
+      this.logger.warn(`JWT validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw new UnauthorizedException('Invalid token');
     }
   }

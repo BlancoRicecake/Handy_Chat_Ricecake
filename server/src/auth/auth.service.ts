@@ -131,7 +131,7 @@ export class AuthService {
       await this.refreshTokenService.revokeToken(payload.jti);
       this.logger.log(`User logged out: ${payload.sub}`);
     } catch (error) {
-      this.logger.warn(`Logout failed: ${error.message}`);
+      this.logger.warn(`Logout failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       // Don't throw - logout should be idempotent
     }
   }

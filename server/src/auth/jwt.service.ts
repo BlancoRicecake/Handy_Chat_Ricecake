@@ -97,14 +97,14 @@ export class JwtService {
           return payload;
         } catch (previousError) {
           this.logger.warn(
-            `Token validation failed with both current and previous secrets: ${currentError.message}`,
+            `Token validation failed with both current and previous secrets: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`,
           );
           throw new UnauthorizedException('Invalid token');
         }
       }
 
       // No rotation or no previous secret
-      this.logger.warn(`Token validation failed: ${currentError.message}`);
+      this.logger.warn(`Token validation failed: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`);
       throw new UnauthorizedException('Invalid token');
     }
   }
@@ -147,13 +147,13 @@ export class JwtService {
           return payload;
         } catch (previousError) {
           this.logger.warn(
-            `Refresh token validation failed with both secrets: ${currentError.message}`,
+            `Refresh token validation failed with both secrets: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`,
           );
           throw new UnauthorizedException('Invalid refresh token');
         }
       }
 
-      this.logger.warn(`Refresh token validation failed: ${currentError.message}`);
+      this.logger.warn(`Refresh token validation failed: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`);
       throw new UnauthorizedException('Invalid refresh token');
     }
   }

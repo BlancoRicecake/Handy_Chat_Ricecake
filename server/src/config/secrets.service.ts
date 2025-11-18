@@ -53,7 +53,7 @@ export class SecretsService implements OnModuleInit {
         this.logger.warn('JWT secret rotation is active (previous secret present)');
       }
     } catch (error) {
-      this.logger.error(`Failed to load JWT secrets on boot: ${error.message}`);
+      this.logger.error(`Failed to load JWT secrets on boot: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
       if (!this.failOpen) {
         this.logger.fatal('AWS_SECRETS_FAIL_OPEN=false - shutting down application');
@@ -82,7 +82,7 @@ export class SecretsService implements OnModuleInit {
         secrets = await this.fetchFromAws();
         this.logger.debug('Fetched secrets from AWS Secrets Manager');
       } catch (error) {
-        this.logger.error(`AWS Secrets Manager fetch failed: ${error.message}`);
+        this.logger.error(`AWS Secrets Manager fetch failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
         if (this.failOpen) {
           this.logger.warn('Falling back to environment variables');
