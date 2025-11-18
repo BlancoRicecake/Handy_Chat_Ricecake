@@ -99,20 +99,20 @@ async function createIndexes() {
         }
 
         // Create index
-        await collection.createIndex(indexDef.keys, {
+        await collection.createIndex(indexDef.keys as any, {
           name: indexDef.name,
           ...indexDef.options,
         });
 
         console.log(`✅ Created index "${indexDef.name}" on "${indexDef.collection}"`);
       } catch (error) {
-        console.error(`❌ Failed to create index "${indexDef.name}": ${error.message}`);
+        console.error(`❌ Failed to create index "${indexDef.name}": ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
     console.log('\n✅ Index creation completed');
   } catch (error) {
-    console.error('❌ Error:', error.message);
+    console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
     process.exit(1);
   } finally {
     await client.close();

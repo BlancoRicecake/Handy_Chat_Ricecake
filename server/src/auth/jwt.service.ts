@@ -36,8 +36,8 @@ export class JwtService {
     };
 
     return jwt.sign(payload, secrets.current, {
-      expiresIn,
-    });
+      expiresIn: expiresIn as string | number,
+    } as jwt.SignOptions);
   }
 
   /**
@@ -60,8 +60,8 @@ export class JwtService {
     };
 
     const token = jwt.sign(payload, secrets.current, {
-      expiresIn,
-    });
+      expiresIn: expiresIn as string | number,
+    } as jwt.SignOptions);
 
     // Calculate expiration timestamp
     const decodedToken = jwt.decode(token) as any;
