@@ -11,6 +11,8 @@ async function bootstrap() {
     ? process.env.CORS_ORIGIN.split(',')
     : ['https://localhost:8443', 'http://localhost:3000'];
 
+  // Environment validation runs automatically via EnvValidationService (SecretsModule)
+  // Application will fail fast if required variables are missing or invalid
   const app = await NestFactory.create(AppModule, {
     cors: {
       origin: corsOrigin,
@@ -54,10 +56,17 @@ async function bootstrap() {
   // Compression middleware
   app.use(compression());
 
+  // Trust proxy configuration for reverse proxy deployments
+  if (process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true') {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
   const port = process.env.PORT || 3000;
-  await app.listen(port);
+  const host = process.env.HOST || '0.0.0.0';
+
+  await app.listen(port, host);
   const logger = new Logger('Bootstrap');
-  logger.log(`API listening on http://localhost:${port}`);
+  logger.log(`API listening on http://${host}:${port}`);
   logger.log(`CORS enabled for: ${corsOrigin.join(', ')}`);
 }
 bootstrap();

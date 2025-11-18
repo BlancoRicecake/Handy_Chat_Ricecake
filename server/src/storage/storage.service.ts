@@ -10,12 +10,24 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 @Injectable()
 export class StorageService {
-  private readonly s3Client: S3Client;
-  private readonly publicS3Client: S3Client; // For generating browser-accessible presigned URLs
+  private readonly s3Client: S3Client | null;
+  private readonly publicS3Client: S3Client | null; // For generating browser-accessible presigned URLs
   private readonly bucket: string;
   private readonly logger = new Logger(StorageService.name);
+  private readonly s3Enabled: boolean;
 
   constructor() {
+    // Check if S3 is enabled (MVP mode can disable S3)
+    this.s3Enabled = process.env.USE_S3 !== 'false';
+
+    if (!this.s3Enabled) {
+      this.logger.warn('S3 storage is DISABLED (USE_S3=false). File upload features will not work.');
+      this.s3Client = null;
+      this.publicS3Client = null;
+      this.bucket = '';
+      return;
+    }
+
     const endpoint = process.env.S3_ENDPOINT || 'http://localhost:9000';
     const region = process.env.S3_REGION || 'us-east-1';
     const accessKeyId = process.env.S3_ACCESS_KEY || 'minioadmin';
@@ -59,6 +71,8 @@ export class StorageService {
   }
 
   private async ensureBucket() {
+    if (!this.s3Client) return;
+
     try {
       await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucket }));
       this.logger.log(`Bucket '${this.bucket}' exists`);
@@ -79,6 +93,10 @@ export class StorageService {
     fileName: string,
     fileType: string,
   ): Promise<{ uploadUrl: string; fileUrl: string; key: string }> {
+    if (!this.s3Enabled || !this.publicS3Client) {
+      throw new Error('S3 storage is disabled. Enable USE_S3=true to use file upload features.');
+    }
+
     // Generate unique key with timestamp
     const timestamp = Date.now();
     const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -112,6 +130,10 @@ export class StorageService {
   async generatePresignedDownloadUrl(
     key: string,
   ): Promise<{ downloadUrl: string }> {
+    if (!this.s3Enabled || !this.publicS3Client) {
+      throw new Error('S3 storage is disabled. Enable USE_S3=true to use file download features.');
+    }
+
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,

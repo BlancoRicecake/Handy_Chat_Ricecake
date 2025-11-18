@@ -8,11 +8,9 @@ import {
   WsException,
 } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
-import * as jwt from 'jsonwebtoken';
 import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from '../messages/messages.service';
-
-type JwtPayload = { sub: string; email?: string };
+import { AuthService } from '../auth/auth.service';
 
 @WebSocketGateway({
   cors: {
@@ -30,7 +28,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly MESSAGE_LIMIT = 10; // messages per second
   private readonly MESSAGE_WINDOW = 1000; // 1 second in ms
 
-  constructor(private readonly messages: MessagesService) {}
+  constructor(
+    private readonly messages: MessagesService,
+    private readonly authService: AuthService,
+  ) {}
 
   async handleConnection(client: Socket) {
     try {
@@ -42,19 +43,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ) ||
         '';
 
-      const secret = process.env.JWT_SECRET;
-      if (
-        !secret ||
-        secret === 'CHANGE_THIS_TO_A_STRONG_RANDOM_SECRET_MINIMUM_32_CHARS'
-      ) {
-        throw new Error(
-          'JWT_SECRET must be configured with a strong random value',
-        );
-      }
+      // Use AuthService for token validation (supports rotation)
+      const payload = await this.authService.validateToken(token);
+      if (!payload?.userId) throw new Error('No userId in token');
 
-      const payload = jwt.verify(token, secret) as JwtPayload;
-      if (!payload?.sub) throw new Error('No sub');
-      this.online.set(client.id, payload.sub);
+      this.online.set(client.id, payload.userId);
     } catch (e) {
       client.disconnect(true);
     }

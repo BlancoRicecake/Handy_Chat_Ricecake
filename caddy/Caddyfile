@@ -1,0 +1,80 @@
+# Caddyfile for chat-stack API reverse proxy
+# Caddy automatically handles HTTPS with Let's Encrypt
+
+{
+	# Global options
+	admin off
+
+	# Structured JSON logging
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100mb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json
+		level INFO
+	}
+}
+
+# Main server block
+# For local development: localhost
+# For production: replace with your domain (e.g., yourdomain.com)
+:80, :443 {
+	# Automatic HTTPS
+	# In production with a real domain, Caddy will automatically obtain Let's Encrypt certificates
+	# For local development without a domain, Caddy will use self-signed certificates
+
+	# Rate limiting: 100 requests per minute globally
+	rate_limit {
+		zone dynamic {
+			key {remote_host}
+			events 100
+			window 1m
+		}
+	}
+
+	# Security headers (Caddy adds many by default)
+	header {
+		# HSTS
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# Prevent MIME sniffing
+		X-Content-Type-Options "nosniff"
+		# Clickjacking protection
+		X-Frame-Options "SAMEORIGIN"
+		# XSS protection
+		X-XSS-Protection "1; mode=block"
+		# Referrer policy
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Remove server header
+		-Server
+	}
+
+	# Health check endpoint (no access logging)
+	handle /health {
+		reverse_proxy api:3000
+		log {
+			output discard
+		}
+	}
+
+	# WebSocket support for Socket.IO (automatic upgrade handling)
+	# All requests are proxied to the NestJS API
+	reverse_proxy api:3000 {
+		# Forward real client IP
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		# Health check for backend
+		health_uri /health
+		health_interval 30s
+		health_timeout 10s
+	}
+
+	# Custom error pages
+	handle_errors {
+		respond "{err.status_code} {err.status_text}"
+	}
+}

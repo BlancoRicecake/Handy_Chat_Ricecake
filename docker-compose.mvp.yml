@@ -1,0 +1,238 @@
+version: '3.8'
+
+# ===================================================================
+# MVP Docker Compose Configuration
+# ===================================================================
+# All-in-one setup for EC2 deployment with minimal cost
+#
+# Services:
+#   - Caddy (reverse proxy + HTTPS)
+#   - API (NestJS application)
+#   - MongoDB (database container)
+#   - Redis (cache container)
+#
+# Target: EC2 t3.small/t3.medium ($15-30/month)
+#
+# Usage:
+#   docker-compose -f docker-compose.mvp.yml up -d --build
+#
+# Scaling: See docs/deployment/SCALING_ROADMAP.md
+# ===================================================================
+
+services:
+  # Caddy reverse proxy with automatic HTTPS
+  caddy:
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
+    depends_on:
+      - api
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
+  # NestJS API server
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    env_file:
+      - .env.mvp
+    environment:
+      # Server Configuration
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - TRUST_PROXY=1
+      # Local MongoDB (container)
+      - MONGO_URI=mongodb://mongo:27017/chatdb
+      # Local Redis (container)
+      - REDIS_URL=redis://redis:6379/0
+      # Disable external services for MVP
+      - USE_S3=false
+      - USE_AWS_SECRETS=false
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # MongoDB database (containerized)
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+    environment:
+      # Optional: Set MongoDB authentication
+      # - MONGO_INITDB_ROOT_USERNAME=admin
+      # - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=chatdb
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    command: mongod --quiet --logpath /dev/null
+
+  # Redis cache (containerized)
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+    # Optional: Enable persistence and password
+    # command: redis-server --appendonly yes --requirepass yourpassword
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:
+  caddy-logs:
+  mongo-data:
+  mongo-config:
+  redis-data:
+
+# ===================================================================
+# Resource Allocation (t3.small: 2 vCPU, 2GB RAM)
+# ===================================================================
+# Caddy:    0.25 CPU, 128 MB  (6%)
+# API:      1.0  CPU, 1 GB     (50%)
+# MongoDB:  0.5  CPU, 512 MB   (25%)
+# Redis:    0.25 CPU, 256 MB   (12%)
+# System:   -     ~100 MB      (5%)
+# -----------------------------------------------
+# Total:    2.0  CPU, ~2 GB    (98% utilization)
+#
+# For t3.medium (2 vCPU, 4GB RAM), increase API memory to 2GB
+# ===================================================================
+
+# ===================================================================
+# Deployment Notes
+# ===================================================================
+#
+# 1. Before first deployment:
+#    - Copy .env.mvp.example to .env.mvp
+#    - Update JWT_SECRET_CURRENT (min 32 chars)
+#    - Update CORS_ORIGIN with your domain
+#    - Update Caddyfile with your domain
+#
+# 2. Deploy:
+#    docker-compose -f docker-compose.mvp.yml up -d --build
+#
+# 3. Check health:
+#    curl http://localhost/health
+#
+# 4. View logs:
+#    docker-compose -f docker-compose.mvp.yml logs -f
+#
+# 5. Backup MongoDB:
+#    docker exec $(docker ps -qf "name=mongo") mongodump --out=/data/backup
+#
+# 6. Stop services:
+#    docker-compose -f docker-compose.mvp.yml down
+#
+# ===================================================================
+
+# ===================================================================
+# When to Scale Up
+# ===================================================================
+#
+# Upgrade to MongoDB Atlas when:
+#   - DAU > 500
+#   - Database size > 5GB
+#   - Need automatic backups
+#   - Need replica sets
+#
+# Upgrade to ElastiCache when:
+#   - DAU > 2000
+#   - Cache hit rate is critical
+#   - Need Redis Cluster
+#
+# Upgrade to full production when:
+#   - DAU > 5000
+#   - Need CI/CD automation
+#   - Need multi-region
+#   - Enterprise requirements
+#
+# See: docs/deployment/SCALING_ROADMAP.md
+# ===================================================================

@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # Caddy reverse proxy with automatic HTTPS
+  caddy:
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
+    depends_on:
+      - api
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # NestJS API server (Production)
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    env_file:
+      - .env.production
+    environment:
+      # Server Configuration
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - TRUST_PROXY=1
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "service=api,environment=production"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:
+  caddy-logs:
+
+# Production Notes:
+#
+# 1. External Services (Not included in this compose file):
+#    - MongoDB: Use MongoDB Atlas or AWS DocumentDB
+#    - Redis: Use AWS ElastiCache or Redis Cloud
+#    - S3: Use AWS S3 for file storage
+#    - Secrets: Use AWS Secrets Manager for sensitive data
+#
+# 2. Required Environment Variables (.env.production):
+#    - MONGO_URI: External MongoDB connection string
+#    - REDIS_URL: External Redis connection string
+#    - JWT_SECRET_CURRENT: From AWS Secrets Manager
+#    - S3_BUCKET_NAME, S3_ACCESS_KEY, S3_SECRET_KEY
+#    - CORS_ORIGIN: Your production domain(s)
+#
+# 3. Before Deployment:
+#    - Update Caddyfile with your actual domain
+#    - Run: npm run create-indexes (MongoDB indexes)
+#    - Test health endpoints
+#    - Configure AWS Secrets Manager
+#
+# 4. Deployment Commands:
+#    - Deploy: docker-compose -f docker-compose.production.yml up -d
+#    - Logs: docker-compose -f docker-compose.production.yml logs -f
+#    - Stop: docker-compose -f docker-compose.production.yml down
+#
+# 5. Resource Limits:
+#    - Caddy: 256MB RAM, 0.5 CPU cores
+#    - API: 2GB RAM, 2.0 CPU cores
+#    - Adjust based on your workload

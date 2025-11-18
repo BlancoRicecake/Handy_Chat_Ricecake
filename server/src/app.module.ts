@@ -12,13 +12,16 @@ import { RoomsModule } from './rooms/rooms.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { StorageModule } from './storage/storage.module';
-import { DevAuthController } from './auth/dev.controller';
+import { SecretsModule } from './config/secrets.module';
+import { FeatureFlagsModule } from './config/feature-flags.module';
 import { RoomsController } from './rooms/rooms.controller';
 import { MessagesController } from './messages/message.controller';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    SecretsModule,
+    FeatureFlagsModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 60 seconds
@@ -49,7 +52,6 @@ import { MessagesController } from './messages/message.controller';
   ],
   controllers: [
     HealthController,
-    DevAuthController,
     RoomsController,
     MessagesController,
   ],
