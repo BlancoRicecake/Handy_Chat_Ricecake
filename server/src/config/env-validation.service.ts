@@ -62,8 +62,9 @@ export class EnvValidationService implements OnModuleInit {
     }
 
     // S3 configuration
-    if (!process.env.S3_BUCKET_NAME) {
-      this.errors.push('S3_BUCKET_NAME is required');
+    // Only require S3_BUCKET_NAME if S3 is enabled
+    if (process.env.USE_S3 !== 'false' && !process.env.S3_BUCKET_NAME) {
+      this.errors.push('S3_BUCKET_NAME is required when USE_S3 is enabled');
     }
   }
 
