@@ -41,12 +41,9 @@
 		-Server
 	}
 
-	# Health check endpoint (no access logging)
+	# Health check endpoint
 	handle /health {
 		reverse_proxy api:3000
-		log {
-			output discard
-		}
 	}
 
 	# WebSocket support for Socket.IO (automatic upgrade handling)
