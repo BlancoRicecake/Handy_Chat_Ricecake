@@ -25,15 +25,6 @@
 	# In production with a real domain, Caddy will automatically obtain Let's Encrypt certificates
 	# For local development without a domain, Caddy will use self-signed certificates
 
-	# Rate limiting: 100 requests per minute globally
-	rate_limit {
-		zone dynamic {
-			key {remote_host}
-			events 100
-			window 1m
-		}
-	}
-
 	# Security headers (Caddy adds many by default)
 	header {
 		# HSTS
