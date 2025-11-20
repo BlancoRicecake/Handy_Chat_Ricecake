@@ -73,6 +73,8 @@ export class JwtService {
   /**
    * Verify an access token with rotation support
    * Tries current secret first, then falls back to previous secret if available
+   *
+   * Supports handy-platform token format: { id } → { sub, username }
    */
   async verifyAccessToken(token: string): Promise<JwtPayload> {
     const secrets = await this.secretsService.getJwtSecrets();
@@ -82,19 +84,22 @@ export class JwtService {
     try {
       const payload = jwt.verify(token, secrets.current, {
         clockTolerance,
-      }) as JwtPayload;
+      }) as any;
 
-      return payload;
+      // Support handy-platform token format: { id } → { sub, username }
+      return this.normalizePayload(payload);
     } catch (currentError) {
       // If rotation is enabled and previous secret exists, try it
       if (this.featureFlags.useRotatedJwt() && secrets.previous) {
         try {
           const payload = jwt.verify(token, secrets.previous, {
             clockTolerance,
-          }) as JwtPayload;
+          }) as any;
 
-          this.logger.debug(`Token validated with previous secret for user ${payload.sub}`);
-          return payload;
+          this.logger.debug(`Token validated with previous secret for user ${payload.sub || payload.id}`);
+
+          // Support handy-platform token format: { id } → { sub, username }
+          return this.normalizePayload(payload);
         } catch (previousError) {
           this.logger.warn(
             `Token validation failed with both current and previous secrets: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`,
@@ -107,6 +112,26 @@ export class JwtService {
       this.logger.warn(`Token validation failed: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`);
       throw new UnauthorizedException('Invalid token');
     }
+  }
+
+  /**
+   * Normalize JWT payload to support different token formats
+   * Converts handy-platform format { id } to standard format { sub, username }
+   */
+  private normalizePayload(payload: any): JwtPayload {
+    // If token has 'id' but not 'sub', it's from handy-platform
+    if (payload.id && !payload.sub) {
+      this.logger.debug(`Normalizing handy-platform token format for user ${payload.id}`);
+      return {
+        sub: payload.id,           // Convert 'id' to 'sub'
+        username: payload.id,       // Use 'id' as username fallback
+        iat: payload.iat,
+        exp: payload.exp,
+      };
+    }
+
+    // Standard format or already has both fields
+    return payload as JwtPayload;
   }
 
   /**

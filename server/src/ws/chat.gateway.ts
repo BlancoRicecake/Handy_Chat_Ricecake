@@ -43,10 +43,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ) ||
         '';
 
-      // Use AuthService for token validation (supports rotation)
+      // Use AuthService for token validation (supports rotation and handy-platform tokens)
       const payload = await this.authService.validateToken(token);
       if (!payload?.userId) throw new Error('No userId in token');
 
+      // Note: username is optional (handy-platform tokens may use userId as username)
       this.online.set(client.id, payload.userId);
     } catch (e) {
       client.disconnect(true);
