@@ -2,11 +2,11 @@ const io = require('socket.io-client');
 
 const ROOM_ID = '690ef4652846ccf228ff7272';
 
-const USER1_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMSIsImlhdCI6MTc2MjU4NzcyMywiZXhwIjoxNzYzMTkyNTIzfQ.MslCW2a62wlqaGYoVzE-mkCL5KrRqAVc7TNZdXfYy-I';
-const USER2_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMiIsImlhdCI6MTc2MjU4NzcyNywiZXhwIjoxNzYzMTkyNTI3fQ.FDTLQzjPyw_Syz2llr6-223pZ3-hn_N6OF6qz8Ok4vs';
+const USER1_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OTFmZmRmYTEyMTI4NmViYTk2NmU5MDYiLCJ1c2VybmFtZSI6InRlc3R1c2VyMSIsImlhdCI6MTc2MzcwNDQ4MSwiZXhwIjoxNzY0MzA5MjgxfQ.ZZZYTPk-S3KQOxAXcE7e5xo83gJ6FK3kAClqUVLMbZY';
+const USER2_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OTFmZmRmYzEyMTI4NmViYTk2NmU5MDkiLCJ1c2VybmFtZSI6InRlc3R1c2VyMiIsImlhdCI6MTc2MzcwNDUwMywiZXhwIjoxNzY0MzA5MzAzfQ.2p_F0VA5Nam_J8Y8K4X2q0Z6NwxhplXdCPcCeHRRuIY';
 
 function createClient(userId, token, color) {
-  const socket = io('http://localhost:3000', {
+  const socket = io('http://localhost', {
     auth: { token },
     transports: ['websocket', 'polling']
   });

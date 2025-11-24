@@ -140,13 +140,13 @@ export class AuthService {
    * Validate access token (legacy method for backward compatibility)
    * Used by WebSocket gateway
    *
-   * Supports handy-platform tokens (username may be optional/fallback to userId)
+   * Supports handy-platform tokens with 'id' field
    */
   async validateToken(token: string): Promise<{ userId: string; username?: string }> {
     const payload = await this.jwtService.verifyAccessToken(token);
     return {
-      userId: payload.sub,
-      username: payload.username,  // Optional: may be userId for handy-platform tokens
+      userId: payload.id,
+      username: payload.username,  // Optional: may not be present in handy-platform tokens
     };
   }
 

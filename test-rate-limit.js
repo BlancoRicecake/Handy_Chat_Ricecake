@@ -1,24 +1,20 @@
 const io = require('socket.io-client');
-const https = require('https');
+const http = require('http');
 
-// Disable SSL verification for self-signed certificates
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
-const API_URL = 'https://localhost:8443';
+const API_URL = 'http://localhost';
 
 async function fetchJSON(url, options = {}) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const requestOptions = {
       hostname: urlObj.hostname,
-      port: urlObj.port,
+      port: urlObj.port || 80,
       path: urlObj.pathname + urlObj.search,
       method: options.method || 'GET',
       headers: options.headers || {},
-      rejectUnauthorized: false,
     };
 
-    const req = https.request(requestOptions, (res) => {
+    const req = http.request(requestOptions, (res) => {
       let data = '';
       res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
@@ -75,7 +71,6 @@ async function testRateLimit() {
     const socket = io(API_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
-      rejectUnauthorized: false,
     });
 
     await new Promise((resolve) => {

@@ -31,7 +31,7 @@ export class JwtService {
     const expiresIn = this.featureFlags.getAccessTokenExpiry();
 
     const payload: JwtPayload = {
-      sub: userId,
+      id: userId,
       username,
     };
 
@@ -74,7 +74,7 @@ export class JwtService {
    * Verify an access token with rotation support
    * Tries current secret first, then falls back to previous secret if available
    *
-   * Supports handy-platform token format: { id } → { sub, username }
+   * Supports handy-platform token format with 'id' field
    */
   async verifyAccessToken(token: string): Promise<JwtPayload> {
     const secrets = await this.secretsService.getJwtSecrets();
@@ -84,22 +84,30 @@ export class JwtService {
     try {
       const payload = jwt.verify(token, secrets.current, {
         clockTolerance,
-      }) as any;
+      }) as JwtPayload;
 
-      // Support handy-platform token format: { id } → { sub, username }
-      return this.normalizePayload(payload);
+      // Ensure 'id' field exists (handy-platform format)
+      if (!payload.id && payload.sub) {
+        payload.id = payload.sub;
+      }
+
+      return payload;
     } catch (currentError) {
       // If rotation is enabled and previous secret exists, try it
       if (this.featureFlags.useRotatedJwt() && secrets.previous) {
         try {
           const payload = jwt.verify(token, secrets.previous, {
             clockTolerance,
-          }) as any;
+          }) as JwtPayload;
 
-          this.logger.debug(`Token validated with previous secret for user ${payload.sub || payload.id}`);
+          this.logger.debug(`Token validated with previous secret for user ${payload.id || payload.sub}`);
 
-          // Support handy-platform token format: { id } → { sub, username }
-          return this.normalizePayload(payload);
+          // Ensure 'id' field exists
+          if (!payload.id && payload.sub) {
+            payload.id = payload.sub;
+          }
+
+          return payload;
         } catch (previousError) {
           this.logger.warn(
             `Token validation failed with both current and previous secrets: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`,
@@ -114,25 +122,6 @@ export class JwtService {
     }
   }
 
-  /**
-   * Normalize JWT payload to support different token formats
-   * Converts handy-platform format { id } to standard format { sub, username }
-   */
-  private normalizePayload(payload: any): JwtPayload {
-    // If token has 'id' but not 'sub', it's from handy-platform
-    if (payload.id && !payload.sub) {
-      this.logger.debug(`Normalizing handy-platform token format for user ${payload.id}`);
-      return {
-        sub: payload.id,           // Convert 'id' to 'sub'
-        username: payload.id,       // Use 'id' as username fallback
-        iat: payload.iat,
-        exp: payload.exp,
-      };
-    }
-
-    // Standard format or already has both fields
-    return payload as JwtPayload;
-  }
 
   /**
    * Verify a refresh token with rotation support

@@ -1,16 +1,23 @@
 /**
  * JWT Access Token Payload
+ *
+ * Supports handy-platform token format with 'id' field
  */
 export interface JwtPayload {
   /**
-   * Subject - User ID
+   * User ID from handy-platform (primary)
    */
-  sub: string;
+  id: string;
 
   /**
-   * Username
+   * Subject - User ID (optional, for compatibility)
    */
-  username: string;
+  sub?: string;
+
+  /**
+   * Username (optional)
+   */
+  username?: string;
 
   /**
    * Issued at timestamp (Unix seconds)

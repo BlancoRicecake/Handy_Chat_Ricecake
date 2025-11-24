@@ -1,6 +1,6 @@
 const io = require('socket.io-client');
 
-const API_URL = 'https://localhost:8443';
+const API_URL = 'http://localhost';
 
 async function createTestData() {
   console.log('=== Creating Test Data for Pagination ===\n');
@@ -41,14 +41,12 @@ async function createTestData() {
 
   const socket1 = io(API_URL, {
     auth: { token: user1.token },
-    transports: ['websocket', 'polling'],
-    rejectUnauthorized: false
+    transports: ['websocket', 'polling']
   });
 
   const socket2 = io(API_URL, {
     auth: { token: user2.token },
-    transports: ['websocket', 'polling'],
-    rejectUnauthorized: false
+    transports: ['websocket', 'polling']
   });
 
   await new Promise(resolve => {
