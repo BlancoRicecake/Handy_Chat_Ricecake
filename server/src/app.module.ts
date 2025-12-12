@@ -50,11 +50,7 @@ import { MessagesController } from './messages/message.controller';
     MessagesModule,
     WsModule,
   ],
-  controllers: [
-    HealthController,
-    RoomsController,
-    MessagesController,
-  ],
+  controllers: [HealthController, RoomsController, MessagesController],
   providers: [
     {
       provide: APP_GUARD,

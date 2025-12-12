@@ -103,7 +103,10 @@ export class AuthService {
     const payload = await this.jwtService.verifyRefreshToken(refreshToken);
 
     // Validate refresh token in database
-    await this.refreshTokenService.validateRefreshToken(payload.jti, refreshToken);
+    await this.refreshTokenService.validateRefreshToken(
+      payload.jti,
+      refreshToken,
+    );
 
     // Get user info
     const user = await this.usersService.findById(payload.sub);
@@ -111,10 +114,17 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    this.logger.debug(`Token refreshed for user: ${user.username} (${payload.sub})`);
+    this.logger.debug(
+      `Token refreshed for user: ${user.username} (${payload.sub})`,
+    );
 
     // Generate new tokens
-    return this.generateTokens(payload.sub, user.username, deviceInfo, ipAddress);
+    return this.generateTokens(
+      payload.sub,
+      user.username,
+      deviceInfo,
+      ipAddress,
+    );
   }
 
   /**
@@ -131,7 +141,9 @@ export class AuthService {
       await this.refreshTokenService.revokeToken(payload.jti);
       this.logger.log(`User logged out: ${payload.sub}`);
     } catch (error) {
-      this.logger.warn(`Logout failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.logger.warn(
+        `Logout failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
       // Don't throw - logout should be idempotent
     }
   }
@@ -142,11 +154,13 @@ export class AuthService {
    *
    * Supports handy-platform tokens with 'id' field
    */
-  async validateToken(token: string): Promise<{ userId: string; username?: string }> {
+  async validateToken(
+    token: string,
+  ): Promise<{ userId: string; username?: string }> {
     const payload = await this.jwtService.verifyAccessToken(token);
     return {
       userId: payload.id,
-      username: payload.username,  // Optional: may not be present in handy-platform tokens
+      username: payload.username, // Optional: may not be present in handy-platform tokens
     };
   }
 
@@ -160,7 +174,10 @@ export class AuthService {
     ipAddress?: string,
   ): Promise<TokensResponse> {
     // Generate access token
-    const accessToken = await this.jwtService.generateAccessToken(userId, username);
+    const accessToken = await this.jwtService.generateAccessToken(
+      userId,
+      username,
+    );
 
     // Calculate expiry
     const expiryStr = this.featureFlags.getAccessTokenExpiry();

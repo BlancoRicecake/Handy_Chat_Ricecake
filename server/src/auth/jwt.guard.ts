@@ -27,7 +27,9 @@ export class JwtGuard implements CanActivate {
     const token = this.extractTokenFromHeader(request);
 
     // DEBUG: Use console.log to bypass Winston
-    console.log(`[DEBUG] Token extracted: ${token ? token.substring(0, 30) + '...' : 'null'}`);
+    console.log(
+      `[DEBUG] Token extracted: ${token ? token.substring(0, 30) + '...' : 'null'}`,
+    );
 
     if (!token) {
       console.error('[DEBUG] No token provided in Authorization header');
@@ -35,7 +37,8 @@ export class JwtGuard implements CanActivate {
     }
 
     try {
-      const payload: JwtPayload = await this.jwtService.verifyAccessToken(token);
+      const payload: JwtPayload =
+        await this.jwtService.verifyAccessToken(token);
 
       // DEBUG: Log successful verification and payload
       console.log(`[DEBUG] Token verified successfully`);
@@ -50,11 +53,17 @@ export class JwtGuard implements CanActivate {
     } catch (error) {
       // DEBUG: Log detailed error information
       console.error(`[DEBUG] JWT validation FAILED`);
-      console.error(`[DEBUG] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
-      console.error(`[DEBUG] Error message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(
+        `[DEBUG] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`,
+      );
+      console.error(
+        `[DEBUG] Error message: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
       console.error(`[DEBUG] Full error:`, error);
 
-      this.logger.warn(`JWT validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.logger.warn(
+        `JWT validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
       throw new UnauthorizedException('Invalid token');
     }
   }

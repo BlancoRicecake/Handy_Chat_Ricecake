@@ -41,7 +41,9 @@ export class RefreshTokenService {
     // If single-session mode, revoke all existing tokens
     if (this.featureFlags.enforceSingleSession()) {
       await this.revokeAllUserTokens(userId);
-      this.logger.debug(`Revoked all existing tokens for user ${userId} (single-session mode)`);
+      this.logger.debug(
+        `Revoked all existing tokens for user ${userId} (single-session mode)`,
+      );
     }
 
     // Store the new token
@@ -111,7 +113,9 @@ export class RefreshTokenService {
       { isRevoked: true },
     );
 
-    this.logger.log(`Revoked ${result.modifiedCount} tokens for user ${userId}`);
+    this.logger.log(
+      `Revoked ${result.modifiedCount} tokens for user ${userId}`,
+    );
   }
 
   /**
@@ -121,7 +125,10 @@ export class RefreshTokenService {
     const result = await this.refreshTokenModel.deleteMany({
       $or: [
         { expiresAt: { $lt: new Date() } },
-        { isRevoked: true, updatedAt: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }, // Revoked >7 days ago
+        {
+          isRevoked: true,
+          updatedAt: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        }, // Revoked >7 days ago
       ],
     });
 

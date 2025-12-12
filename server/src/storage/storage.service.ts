@@ -21,7 +21,9 @@ export class StorageService {
     this.s3Enabled = process.env.USE_S3 !== 'false';
 
     if (!this.s3Enabled) {
-      this.logger.warn('S3 storage is DISABLED (USE_S3=false). File upload features will not work.');
+      this.logger.warn(
+        'S3 storage is DISABLED (USE_S3=false). File upload features will not work.',
+      );
       this.s3Client = null;
       this.publicS3Client = null;
       this.bucket = '';
@@ -94,7 +96,9 @@ export class StorageService {
     fileType: string,
   ): Promise<{ uploadUrl: string; fileUrl: string; key: string }> {
     if (!this.s3Enabled || !this.publicS3Client) {
-      throw new Error('S3 storage is disabled. Enable USE_S3=true to use file upload features.');
+      throw new Error(
+        'S3 storage is disabled. Enable USE_S3=true to use file upload features.',
+      );
     }
 
     // Generate unique key with timestamp
@@ -131,7 +135,9 @@ export class StorageService {
     key: string,
   ): Promise<{ downloadUrl: string }> {
     if (!this.s3Enabled || !this.publicS3Client) {
-      throw new Error('S3 storage is disabled. Enable USE_S3=true to use file download features.');
+      throw new Error(
+        'S3 storage is disabled. Enable USE_S3=true to use file download features.',
+      );
     }
 
     const command = new GetObjectCommand({

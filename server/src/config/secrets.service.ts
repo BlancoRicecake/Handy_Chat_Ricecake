@@ -35,7 +35,9 @@ export class SecretsService implements OnModuleInit {
     if (this.useAwsSecrets) {
       const region = process.env.AWS_REGION || 'us-east-1';
       this.secretsClient = new SecretsManagerClient({ region });
-      this.logger.log(`AWS Secrets Manager initialized (region: ${region}, secret: ${this.secretName})`);
+      this.logger.log(
+        `AWS Secrets Manager initialized (region: ${region}, secret: ${this.secretName})`,
+      );
     } else {
       this.logger.log('Using environment variable fallback for secrets');
     }
@@ -50,17 +52,25 @@ export class SecretsService implements OnModuleInit {
       this.logger.log('JWT secrets validated successfully on boot');
 
       if (secrets.previous) {
-        this.logger.warn('JWT secret rotation is active (previous secret present)');
+        this.logger.warn(
+          'JWT secret rotation is active (previous secret present)',
+        );
       }
     } catch (error) {
-      this.logger.error(`Failed to load JWT secrets on boot: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.logger.error(
+        `Failed to load JWT secrets on boot: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
 
       if (!this.failOpen) {
-        this.logger.fatal('AWS_SECRETS_FAIL_OPEN=false - shutting down application');
+        this.logger.fatal(
+          'AWS_SECRETS_FAIL_OPEN=false - shutting down application',
+        );
         throw error;
       }
 
-      this.logger.warn('AWS_SECRETS_FAIL_OPEN=true - attempting to continue with fallback');
+      this.logger.warn(
+        'AWS_SECRETS_FAIL_OPEN=true - attempting to continue with fallback',
+      );
     }
   }
 
@@ -82,7 +92,9 @@ export class SecretsService implements OnModuleInit {
         secrets = await this.fetchFromAws();
         this.logger.debug('Fetched secrets from AWS Secrets Manager');
       } catch (error) {
-        this.logger.error(`AWS Secrets Manager fetch failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        this.logger.error(
+          `AWS Secrets Manager fetch failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
 
         if (this.failOpen) {
           this.logger.warn('Falling back to environment variables');
@@ -139,7 +151,9 @@ export class SecretsService implements OnModuleInit {
     const previous = process.env.JWT_SECRET_PREVIOUS;
 
     if (!current) {
-      throw new Error('JWT_SECRET_CURRENT or JWT_SECRET must be set in environment');
+      throw new Error(
+        'JWT_SECRET_CURRENT or JWT_SECRET must be set in environment',
+      );
     }
 
     return {
@@ -161,7 +175,10 @@ export class SecretsService implements OnModuleInit {
       throw new Error('Current JWT secret must be at least 32 characters');
     }
 
-    if (secrets.current === 'CHANGE_THIS_TO_A_STRONG_RANDOM_SECRET_MINIMUM_32_CHARS') {
+    if (
+      secrets.current ===
+      'CHANGE_THIS_TO_A_STRONG_RANDOM_SECRET_MINIMUM_32_CHARS'
+    ) {
       throw new Error('JWT secret must be changed from default value');
     }
 
@@ -172,7 +189,9 @@ export class SecretsService implements OnModuleInit {
       }
 
       if (secrets.previous === secrets.current) {
-        this.logger.warn('Previous and current secrets are identical - rotation may not be working correctly');
+        this.logger.warn(
+          'Previous and current secrets are identical - rotation may not be working correctly',
+        );
       }
     }
   }

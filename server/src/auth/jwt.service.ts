@@ -44,7 +44,9 @@ export class JwtService {
    * Generate a refresh token
    * Only used when ENABLE_REFRESH_TOKEN=true
    */
-  async generateRefreshToken(userId: string): Promise<{ token: string; jti: string; expiresAt: Date }> {
+  async generateRefreshToken(
+    userId: string,
+  ): Promise<{ token: string; jti: string; expiresAt: Date }> {
     if (!this.featureFlags.enableRefreshToken()) {
       throw new Error('Refresh tokens are not enabled');
     }
@@ -100,7 +102,9 @@ export class JwtService {
             clockTolerance,
           }) as JwtPayload;
 
-          this.logger.debug(`Token validated with previous secret for user ${payload.id || payload.sub}`);
+          this.logger.debug(
+            `Token validated with previous secret for user ${payload.id || payload.sub}`,
+          );
 
           // Ensure 'id' field exists
           if (!payload.id && payload.sub) {
@@ -117,11 +121,12 @@ export class JwtService {
       }
 
       // No rotation or no previous secret
-      this.logger.warn(`Token validation failed: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`);
+      this.logger.warn(
+        `Token validation failed: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`,
+      );
       throw new UnauthorizedException('Invalid token');
     }
   }
-
 
   /**
    * Verify a refresh token with rotation support
@@ -157,7 +162,9 @@ export class JwtService {
             throw new UnauthorizedException('Invalid token type');
           }
 
-          this.logger.debug(`Refresh token validated with previous secret for user ${payload.sub}`);
+          this.logger.debug(
+            `Refresh token validated with previous secret for user ${payload.sub}`,
+          );
           return payload;
         } catch (previousError) {
           this.logger.warn(
@@ -167,7 +174,9 @@ export class JwtService {
         }
       }
 
-      this.logger.warn(`Refresh token validation failed: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`);
+      this.logger.warn(
+        `Refresh token validation failed: ${currentError instanceof Error ? currentError.message : 'Unknown error'}`,
+      );
       throw new UnauthorizedException('Invalid refresh token');
     }
   }

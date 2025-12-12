@@ -45,7 +45,12 @@ export class AuthController {
     @Ip() ip: string,
   ) {
     const deviceInfo = this.extractDeviceInfo(req);
-    return this.authService.register(dto.username, dto.password, deviceInfo, ip);
+    return this.authService.register(
+      dto.username,
+      dto.password,
+      deviceInfo,
+      ip,
+    );
   }
 
   /**

@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
+import { MESSAGE_TYPES, MessageType } from './message.types';
 
 export type MessageDocument = HydratedDocument<Message>;
 
@@ -14,14 +15,17 @@ export class Message {
   @Prop({ required: true, unique: true, index: true })
   clientMessageId!: string;
 
-  @Prop({ enum: ['text', 'image'], default: 'text' })
-  type!: 'text' | 'image';
+  @Prop({ enum: MESSAGE_TYPES, default: 'text' })
+  messageType!: MessageType;
 
   @Prop()
   text?: string;
 
   @Prop()
   fileUrl?: string;
+
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null })
+  metadata?: Record<string, any> | null;
 
   @Prop({ enum: ['sent', 'delivered'], default: 'sent' })
   status!: 'sent' | 'delivered';

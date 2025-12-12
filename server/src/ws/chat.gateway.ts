@@ -1,16 +1,19 @@
 import {
   WebSocketGateway,
+  WebSocketServer,
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   WsException,
 } from '@nestjs/websockets';
-import { Socket } from 'socket.io';
+import { Socket, Server } from 'socket.io';
 import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from '../messages/messages.service';
 import { AuthService } from '../auth/auth.service';
+import { MessageType } from '../messages/message.types';
 
 @WebSocketGateway({
   cors: {
@@ -19,7 +22,11 @@ import { AuthService } from '../auth/auth.service';
       : ['http://localhost:3000', 'http://localhost:8080'],
   },
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
+  @WebSocketServer()
+  server!: Server;
   private online = new Map<string, string>(); // socketId -> userId
   private messageRateLimiter = new Map<
     string,
@@ -32,6 +39,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly messages: MessagesService,
     private readonly authService: AuthService,
   ) {}
+
+  afterInit(server: Server) {
+    this.messages.setSocketServer(server);
+  }
 
   async handleConnection(client: Socket) {
     try {
@@ -116,6 +127,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       text?: string;
       fileUrl?: string;
       clientMessageId: string;
+      messageType?: MessageType;
+      metadata?: Record<string, any>;
+      // Legacy fields for backward compatibility
       type?: string;
       fileName?: string;
       fileType?: string;
@@ -147,16 +161,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       throw new WsException('Missing required fields: roomId, clientMessageId');
     }
 
-    const doc = await this.messages.create({
+    // Validate metadata size (max 10KB)
+    if (payload.metadata) {
+      const metadataSize = JSON.stringify(payload.metadata).length;
+      if (metadataSize > 10240) {
+        throw new WsException('Metadata too large (max 10KB)');
+      }
+    }
+
+    // Service handles DB save + broadcast
+    await this.messages.create({
       roomId: payload.roomId,
       senderId,
       clientMessageId: payload.clientMessageId,
-      type: payload.fileUrl ? 'image' : 'text',
+      messageType: payload.messageType,
       text: payload.text,
       fileUrl: payload.fileUrl,
+      metadata: payload.metadata ?? null,
       status: 'delivered',
     });
-    client.to(payload.roomId).emit('message', doc);
+
+    // ACK to sender (broadcast is handled by service)
     client.emit('ack', { clientMessageId: payload.clientMessageId });
   }
 }

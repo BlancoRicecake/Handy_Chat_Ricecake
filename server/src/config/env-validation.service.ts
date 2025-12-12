@@ -39,12 +39,7 @@ export class EnvValidationService implements OnModuleInit {
    * Validate required environment variables
    */
   private validateRequired() {
-    const required = [
-      'NODE_ENV',
-      'PORT',
-      'MONGO_URI',
-      'CORS_ORIGIN',
-    ];
+    const required = ['NODE_ENV', 'PORT', 'MONGO_URI', 'CORS_ORIGIN'];
 
     // JWT secrets
     const hasJwtSecretCurrent = !!process.env.JWT_SECRET_CURRENT;
@@ -112,13 +107,34 @@ export class EnvValidationService implements OnModuleInit {
         const password = match[3];
 
         // Check for unencoded special characters
-        const specialChars = ['@', ':', '/', '?', '#', '[', ']', '!', '$', '&', "'", '(', ')', '*', '+', ',', ';', '='];
-        const unencoded = specialChars.filter((char) => password.includes(char));
+        const specialChars = [
+          '@',
+          ':',
+          '/',
+          '?',
+          '#',
+          '[',
+          ']',
+          '!',
+          '$',
+          '&',
+          "'",
+          '(',
+          ')',
+          '*',
+          '+',
+          ',',
+          ';',
+          '=',
+        ];
+        const unencoded = specialChars.filter((char) =>
+          password.includes(char),
+        );
 
         if (unencoded.length > 0) {
           this.warnings.push(
             `MONGO_URI password contains special characters: ${unencoded.join(', ')}. ` +
-            'Ensure they are URL encoded. Use encodeURIComponent() in JavaScript.',
+              'Ensure they are URL encoded. Use encodeURIComponent() in JavaScript.',
           );
         }
       }
@@ -135,7 +151,7 @@ export class EnvValidationService implements OnModuleInit {
         if (/[@:]/.test(password)) {
           this.warnings.push(
             'REDIS_URL password contains special characters. ' +
-            'Ensure they are URL encoded.',
+              'Ensure they are URL encoded.',
           );
         }
       }
@@ -148,7 +164,9 @@ export class EnvValidationService implements OnModuleInit {
         this.errors.push('JWT secret must be at least 32 characters');
       }
 
-      if (jwtSecret === 'CHANGE_THIS_TO_A_STRONG_RANDOM_SECRET_MINIMUM_32_CHARS') {
+      if (
+        jwtSecret === 'CHANGE_THIS_TO_A_STRONG_RANDOM_SECRET_MINIMUM_32_CHARS'
+      ) {
         this.errors.push('JWT secret must be changed from default value');
       }
     }
@@ -160,7 +178,9 @@ export class EnvValidationService implements OnModuleInit {
         if (process.env.NODE_ENV === 'production') {
           this.errors.push('CORS_ORIGIN cannot be "*" in production');
         } else {
-          this.warnings.push('CORS_ORIGIN is "*" - acceptable for development only');
+          this.warnings.push(
+            'CORS_ORIGIN is "*" - acceptable for development only',
+          );
         }
       }
     }
@@ -174,7 +194,7 @@ export class EnvValidationService implements OnModuleInit {
       if (s3PathStyle === 'true') {
         this.warnings.push(
           'S3_ENDPOINT is empty (AWS S3) but S3_USE_PATH_STYLE is true. ' +
-          'Should be false for AWS S3.',
+            'Should be false for AWS S3.',
         );
       }
     } else {
@@ -182,7 +202,7 @@ export class EnvValidationService implements OnModuleInit {
       if (s3PathStyle !== 'true') {
         this.warnings.push(
           'S3_ENDPOINT is set (MinIO/custom) but S3_USE_PATH_STYLE is not true. ' +
-          'Should be true for MinIO.',
+            'Should be true for MinIO.',
         );
       }
     }
@@ -194,7 +214,9 @@ export class EnvValidationService implements OnModuleInit {
         this.errors.push('AWS_REGION is required when USE_AWS_SECRETS=true');
       }
       if (!process.env.AWS_SECRET_NAME) {
-        this.errors.push('AWS_SECRET_NAME is required when USE_AWS_SECRETS=true');
+        this.errors.push(
+          'AWS_SECRET_NAME is required when USE_AWS_SECRETS=true',
+        );
       }
     }
   }
