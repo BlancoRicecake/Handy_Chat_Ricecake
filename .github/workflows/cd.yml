@@ -9,8 +9,8 @@ on:
   workflow_dispatch:  # Manual trigger
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  AWS_REGION: ap-southeast-2
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-2.amazonaws.com
   ECR_API_REPOSITORY: chat-api
   ECR_CADDY_REPOSITORY: chat-caddy
 
@@ -130,7 +130,7 @@ jobs:
             cd /opt/chat-app
 
             # Login to ECR
-            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+            aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin $ECR_REGISTRY
 
             # Pull latest images
             docker pull $ECR_REGISTRY/$API_REPO:$IMAGE_TAG
