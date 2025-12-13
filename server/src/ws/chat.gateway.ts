@@ -9,6 +9,7 @@ import {
   OnGatewayInit,
   WsException,
 } from '@nestjs/websockets';
+import { Logger } from '@nestjs/common';
 import { Socket, Server } from 'socket.io';
 import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from '../messages/messages.service';
@@ -21,10 +22,15 @@ import { MessageType } from '../messages/message.types';
       ? process.env.CORS_ORIGIN.split(',')
       : ['http://localhost:3000', 'http://localhost:8080'],
   },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket', 'polling'],
 })
 export class ChatGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
 {
+  private readonly logger = new Logger(ChatGateway.name);
+
   @WebSocketServer()
   server!: Server;
   private online = new Map<string, string>(); // socketId -> userId
@@ -60,7 +66,11 @@ export class ChatGateway
 
       // Note: username is optional (handy-platform tokens may use userId as username)
       this.online.set(client.id, payload.userId);
+      this.logger.log(`Client connected: ${client.id}, userId: ${payload.userId}`);
     } catch (e) {
+      const error = e instanceof Error ? e.message : 'Authentication failed';
+      this.logger.warn(`Client connection failed: ${client.id}, reason: ${error}`);
+      client.emit('error', { message: error });
       client.disconnect(true);
     }
   }
@@ -71,6 +81,7 @@ export class ChatGateway
     // Clean up rate limiter data
     if (userId) {
       this.messageRateLimiter.delete(userId);
+      this.logger.log(`Client disconnected: ${client.id}, userId: ${userId}`);
     }
   }
 
@@ -135,53 +146,78 @@ export class ChatGateway
       fileType?: string;
     },
   ) {
-    const senderId = this.online.get(client.id) as string;
+    try {
+      const senderId = this.online.get(client.id) as string;
 
-    // Check rate limit
-    if (!this.checkRateLimit(senderId)) {
+      // Check rate limit
+      if (!this.checkRateLimit(senderId)) {
+        client.emit('error', {
+          message: 'Rate limit exceeded. Maximum 10 messages per second.',
+          clientMessageId: payload.clientMessageId,
+        });
+        return;
+      }
+
+      // Validate message payload size (max 10KB for text)
+      if (payload.text && payload.text.length > 10000) {
+        client.emit('error', {
+          message: 'Message text too long (max 10000 characters)',
+          clientMessageId: payload.clientMessageId,
+        });
+        return;
+      }
+
+      // Validate fileUrl length
+      if (payload.fileUrl && payload.fileUrl.length > 2048) {
+        client.emit('error', {
+          message: 'File URL too long',
+          clientMessageId: payload.clientMessageId,
+        });
+        return;
+      }
+
+      // Validate required fields
+      if (!payload.roomId || !payload.clientMessageId) {
+        client.emit('error', {
+          message: 'Missing required fields: roomId, clientMessageId',
+          clientMessageId: payload.clientMessageId,
+        });
+        return;
+      }
+
+      // Validate metadata size (max 10KB)
+      if (payload.metadata) {
+        const metadataSize = JSON.stringify(payload.metadata).length;
+        if (metadataSize > 10240) {
+          client.emit('error', {
+            message: 'Metadata too large (max 10KB)',
+            clientMessageId: payload.clientMessageId,
+          });
+          return;
+        }
+      }
+
+      // Service handles DB save + broadcast
+      await this.messages.create({
+        roomId: payload.roomId,
+        senderId,
+        clientMessageId: payload.clientMessageId,
+        messageType: payload.messageType,
+        text: payload.text,
+        fileUrl: payload.fileUrl,
+        metadata: payload.metadata ?? null,
+        status: 'delivered',
+      });
+
+      // ACK to sender (broadcast is handled by service)
+      client.emit('ack', { clientMessageId: payload.clientMessageId });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : 'Failed to send message';
+      this.logger.error(`Message error: ${error}`, e instanceof Error ? e.stack : undefined);
       client.emit('error', {
-        message: 'Rate limit exceeded. Maximum 10 messages per second.',
+        message: error,
         clientMessageId: payload.clientMessageId,
       });
-      return;
     }
-
-    // Validate message payload size (max 10KB for text)
-    if (payload.text && payload.text.length > 10000) {
-      throw new WsException('Message text too long (max 10000 characters)');
-    }
-
-    // Validate fileUrl length
-    if (payload.fileUrl && payload.fileUrl.length > 2048) {
-      throw new WsException('File URL too long');
-    }
-
-    // Validate required fields
-    if (!payload.roomId || !payload.clientMessageId) {
-      throw new WsException('Missing required fields: roomId, clientMessageId');
-    }
-
-    // Validate metadata size (max 10KB)
-    if (payload.metadata) {
-      const metadataSize = JSON.stringify(payload.metadata).length;
-      if (metadataSize > 10240) {
-        throw new WsException('Metadata too large (max 10KB)');
-      }
-    }
-
-    // Service handles DB save + broadcast
-    await this.messages.create({
-      roomId: payload.roomId,
-      senderId,
-      clientMessageId: payload.clientMessageId,
-      messageType: payload.messageType,
-      text: payload.text,
-      fileUrl: payload.fileUrl,
-      metadata: payload.metadata ?? null,
-      status: 'delivered',
-    });
-
-    // ACK to sender (broadcast is handled by service)
-    client.emit('ack', { clientMessageId: payload.clientMessageId });
   }
 }
