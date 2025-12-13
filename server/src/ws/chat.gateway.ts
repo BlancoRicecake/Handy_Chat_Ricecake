@@ -7,7 +7,6 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
-  WsException,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Socket, Server } from 'socket.io';
@@ -66,10 +65,14 @@ export class ChatGateway
 
       // Note: username is optional (handy-platform tokens may use userId as username)
       this.online.set(client.id, payload.userId);
-      this.logger.log(`Client connected: ${client.id}, userId: ${payload.userId}`);
+      this.logger.log(
+        `Client connected: ${client.id}, userId: ${payload.userId}`,
+      );
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Authentication failed';
-      this.logger.warn(`Client connection failed: ${client.id}, reason: ${error}`);
+      this.logger.warn(
+        `Client connection failed: ${client.id}, reason: ${error}`,
+      );
       client.emit('error', { message: error });
       client.disconnect(true);
     }
@@ -213,7 +216,10 @@ export class ChatGateway
       client.emit('ack', { clientMessageId: payload.clientMessageId });
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Failed to send message';
-      this.logger.error(`Message error: ${error}`, e instanceof Error ? e.stack : undefined);
+      this.logger.error(
+        `Message error: ${error}`,
+        e instanceof Error ? e.stack : undefined,
+      );
       client.emit('error', {
         message: error,
         clientMessageId: payload.clientMessageId,
