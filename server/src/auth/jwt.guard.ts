@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtService } from './jwt.service';
+import { UsersService } from '../users/users.service';
 import { JwtPayload } from './jwt-payload.interface';
 
 /**
@@ -13,26 +14,24 @@ import { JwtPayload } from './jwt-payload.interface';
  *
  * Usage: @UseGuards(JwtGuard)
  *
- * Validates Bearer tokens from Authorization header
- * Attaches user payload to request object
+ * - Validates Bearer tokens from Authorization header
+ * - Auto-registers user in chat server DB on first access
+ * - Attaches user info to request object
  */
 @Injectable()
 export class JwtGuard implements CanActivate {
   private readonly logger = new Logger(JwtGuard.name);
 
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private usersService: UsersService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
 
-    // DEBUG: Use console.log to bypass Winston
-    console.log(
-      `[DEBUG] Token extracted: ${token ? token.substring(0, 30) + '...' : 'null'}`,
-    );
-
     if (!token) {
-      console.error('[DEBUG] No token provided in Authorization header');
       throw new UnauthorizedException('No token provided');
     }
 
@@ -40,27 +39,20 @@ export class JwtGuard implements CanActivate {
       const payload: JwtPayload =
         await this.jwtService.verifyAccessToken(token);
 
-      // DEBUG: Log successful verification and payload
-      console.log(`[DEBUG] Token verified successfully`);
-      console.log(`[DEBUG] Payload: ${JSON.stringify(payload)}`);
-      console.log(`[DEBUG] User ID (id): ${payload.id}`);
-      console.log(`[DEBUG] Username: ${payload.username || 'N/A'}`);
+      // 메인서버 userId로 유저 캐시 레코드 찾기/생성
+      const user = await this.usersService.findOrCreateByMainServerId(
+        payload.id,
+        payload.username || 'unknown',
+      );
 
-      // Attach user payload to request
-      request.user = payload;
+      // request.user에 mainServerId를 id로 설정 (기존 코드 호환)
+      request.user = {
+        id: user.mainServerId,
+        username: user.username,
+      };
 
       return true;
     } catch (error) {
-      // DEBUG: Log detailed error information
-      console.error(`[DEBUG] JWT validation FAILED`);
-      console.error(
-        `[DEBUG] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`,
-      );
-      console.error(
-        `[DEBUG] Error message: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
-      console.error(`[DEBUG] Full error:`, error);
-
       this.logger.warn(
         `JWT validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );

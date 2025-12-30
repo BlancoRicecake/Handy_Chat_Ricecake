@@ -83,8 +83,8 @@ export class RoomsService {
     // Step 2: Get partner user IDs
     const partnerIds = rooms.map((r) => r.userIds.find((id) => id !== userId)!);
 
-    // Step 3: Batch fetch partner details
-    const partnerMap = await this.usersService.findByIds(partnerIds);
+    // Step 3: Batch fetch partner details (mainServerId로 조회)
+    const partnerMap = await this.usersService.findByMainServerIds(partnerIds);
 
     // Step 4: Batch fetch last messages
     const lastMessages =
@@ -116,8 +116,8 @@ export class RoomsService {
       return {
         roomId,
         partner: partner
-          ? { id: partner._id, username: partner.username }
-          : { id: partnerId, username: 'Deleted User' },
+          ? { id: partner.mainServerId, username: partner.username }
+          : { id: partnerId, username: 'Unknown User' },
         lastMessage: lastMessage
           ? {
               id: lastMessage._id.toString(),

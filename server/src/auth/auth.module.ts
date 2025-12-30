@@ -1,31 +1,23 @@
 import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtService } from './jwt.service';
 import { JwtGuard } from './jwt.guard';
-import { RefreshTokenService } from './refresh-token.service';
-import { RefreshToken, RefreshTokenSchema } from './refresh-token.schema';
 import { UsersModule } from '../users/users.module';
 
 /**
  * Authentication Module
  *
+ * 메인서버에서 JWT 발급, 채팅서버는 검증만 수행
+ *
  * Provides:
- * - AuthService (registration, login, refresh, logout)
- * - JwtService (token generation/validation with rotation)
- * - RefreshTokenService (token storage/revocation)
- * - JwtGuard (HTTP endpoint protection)
- * - AuthController (REST endpoints)
+ * - JwtService (token validation with rotation)
+ * - JwtGuard (HTTP endpoint protection + auto user registration)
+ * - AuthService (token validation for WebSocket)
  */
 @Module({
-  imports: [
-    UsersModule,
-    MongooseModule.forFeature([
-      { name: RefreshToken.name, schema: RefreshTokenSchema },
-    ]),
-  ],
-  providers: [AuthService, JwtService, JwtGuard, RefreshTokenService],
+  imports: [UsersModule],
+  providers: [AuthService, JwtService, JwtGuard],
   controllers: [AuthController],
   exports: [AuthService, JwtService, JwtGuard],
 })

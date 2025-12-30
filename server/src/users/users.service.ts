@@ -2,49 +2,60 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User } from './user.schema';
-import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
   constructor(@InjectModel(User.name) private userModel: Model<User>) {}
 
-  async createUser(username: string, password: string): Promise<User> {
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
+  /**
+   * 메인서버 userId로 유저 찾기 또는 생성 (캐시용)
+   * JWT 검증 후 호출되어 유저 레코드를 자동 생성/업데이트
+   */
+  async findOrCreateByMainServerId(
+    mainServerId: string,
+    username: string,
+  ): Promise<User> {
+    let user = await this.userModel.findOne({ mainServerId });
 
-    const user = new this.userModel({
-      username,
-      passwordHash,
-    });
+    if (!user) {
+      // 첫 접근 시 캐시 레코드 생성
+      user = await this.userModel.create({
+        mainServerId,
+        username,
+      });
+    } else if (user.username !== username) {
+      // username 변경 감지 시 업데이트
+      user.username = username;
+      await user.save();
+    }
 
-    return user.save();
+    return user;
   }
 
-  async findByUsername(username: string): Promise<any> {
-    return this.userModel.findOne({ username }).lean();
+  /**
+   * mainServerId로 유저 찾기
+   */
+  async findByMainServerId(mainServerId: string): Promise<User | null> {
+    return this.userModel.findOne({ mainServerId });
   }
 
-  async findById(userId: string): Promise<any> {
-    return this.userModel.findById(userId).lean();
-  }
-
-  async findByIds(
-    userIds: string[],
-  ): Promise<Map<string, { _id: string; username: string }>> {
+  /**
+   * 여러 mainServerId로 유저들 조회 (배치)
+   * Room 목록에서 파트너 username 조회용
+   */
+  async findByMainServerIds(
+    mainServerIds: string[],
+  ): Promise<Map<string, { mainServerId: string; username: string }>> {
     const users = await this.userModel
-      .find({ _id: { $in: userIds } })
-      .select('_id username')
+      .find({ mainServerId: { $in: mainServerIds } })
+      .select('mainServerId username')
       .lean();
 
     return new Map(
       users.map((u) => [
-        u._id.toString(),
-        { _id: u._id.toString(), username: u.username },
+        u.mainServerId,
+        { mainServerId: u.mainServerId, username: u.username },
       ]),
     );
-  }
-
-  async validatePassword(user: User, password: string): Promise<boolean> {
-    return bcrypt.compare(password, user.passwordHash);
   }
 }

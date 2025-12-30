@@ -3,19 +3,19 @@ import { Document } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class User extends Document {
+  /**
+   * 메인서버의 userId (JWT.id)
+   * 채팅서버에서 유저를 식별하는 기본 키
+   */
   @Prop({ required: true, unique: true, index: true })
-  username!: string;
-
-  @Prop({ required: true })
-  passwordHash!: string;
+  mainServerId!: string;
 
   /**
-   * Current refresh token hash for single-session enforcement
-   * Only used when ENFORCE_SINGLE_SESSION=true
-   * Optional for backward compatibility
+   * 표시용 username (캐시)
+   * 메인서버에서 변경 시 JWT를 통해 자동 업데이트
    */
-  @Prop({ required: false })
-  currentRefreshTokenHash?: string;
+  @Prop({ required: true })
+  username!: string;
 
   @Prop()
   createdAt?: Date;
