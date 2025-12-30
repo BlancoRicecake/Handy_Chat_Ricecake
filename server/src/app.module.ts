@@ -14,7 +14,6 @@ import { UsersModule } from './users/users.module';
 import { StorageModule } from './storage/storage.module';
 import { SecretsModule } from './config/secrets.module';
 import { FeatureFlagsModule } from './config/feature-flags.module';
-import { RoomsController } from './rooms/rooms.controller';
 import { MessagesController } from './messages/message.controller';
 
 @Module({
@@ -50,7 +49,7 @@ import { MessagesController } from './messages/message.controller';
     MessagesModule,
     WsModule,
   ],
-  controllers: [HealthController, RoomsController, MessagesController],
+  controllers: [HealthController, MessagesController],
   providers: [
     {
       provide: APP_GUARD,
