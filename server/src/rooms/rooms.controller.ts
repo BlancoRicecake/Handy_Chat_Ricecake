@@ -58,10 +58,14 @@ export class RoomsController {
     };
   }
 
-  // { userA: 'u1', userB: 'u2' } -> 항상 같은 1:1 방 반환
+  // { partnerId: 'u2' } -> 현재 유저와 파트너의 1:1 방 반환
   @Post('ensure')
-  async ensure(@Body() body: { userA: string; userB: string }) {
-    const room = await this.rooms.getOrCreateOneToOne(body.userA, body.userB);
+  async ensure(
+    @Body() body: { partnerId: string },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user.id;
+    const room = await this.rooms.getOrCreateOneToOne(userId, body.partnerId);
     return room;
   }
 
