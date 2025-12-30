@@ -13,6 +13,7 @@ import { Socket, Server } from 'socket.io';
 import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from '../messages/messages.service';
 import { AuthService } from '../auth/auth.service';
+import { UsersService } from '../users/users.service';
 import { MessageType } from '../messages/message.types';
 
 @WebSocketGateway({
@@ -43,6 +44,7 @@ export class ChatGateway
   constructor(
     private readonly messages: MessagesService,
     private readonly authService: AuthService,
+    private readonly usersService: UsersService,
   ) {}
 
   afterInit(server: Server) {
@@ -62,6 +64,12 @@ export class ChatGateway
       // Use AuthService for token validation (supports rotation and handy-platform tokens)
       const payload = await this.authService.validateToken(token);
       if (!payload?.userId) throw new Error('No userId in token');
+
+      // 캐시 레코드 생성 (WebSocket 연결 시에도 유저 레코드 보장)
+      await this.usersService.findOrCreateByMainServerId(
+        payload.userId,
+        payload.username || payload.userId,
+      );
 
       // Note: username is optional (handy-platform tokens may use userId as username)
       this.online.set(client.id, payload.userId);

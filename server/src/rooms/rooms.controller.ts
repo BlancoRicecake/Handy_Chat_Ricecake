@@ -11,6 +11,7 @@ import {
 import { Request } from 'express';
 import { RoomsService } from './rooms.service';
 import { ReadReceiptService } from './read-receipt.service';
+import { UsersService } from '../users/users.service';
 import { JwtGuard } from '../auth/jwt.guard';
 
 interface AuthenticatedRequest extends Request {
@@ -26,6 +27,7 @@ export class RoomsController {
   constructor(
     private readonly rooms: RoomsService,
     private readonly readReceiptService: ReadReceiptService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Get()
@@ -58,13 +60,20 @@ export class RoomsController {
     };
   }
 
-  // { partnerId: 'u2' } -> 현재 유저와 파트너의 1:1 방 반환
+  // { partnerId: 'u2', partnerUsername?: 'seller1' } -> 현재 유저와 파트너의 1:1 방 반환
   @Post('ensure')
   async ensure(
-    @Body() body: { partnerId: string },
+    @Body() body: { partnerId: string; partnerUsername?: string },
     @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user.id;
+
+    // partner 캐시 레코드 생성 (없으면 partnerId를 username으로 사용)
+    await this.usersService.findOrCreateByMainServerId(
+      body.partnerId,
+      body.partnerUsername || body.partnerId,
+    );
+
     const room = await this.rooms.getOrCreateOneToOne(userId, body.partnerId);
     return room;
   }
