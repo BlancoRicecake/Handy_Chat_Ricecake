@@ -10,6 +10,12 @@ export class Room {
 
   @Prop()
   lastMessage?: string;
+
+  @Prop({ type: Date, index: true })
+  lastMessageAt?: Date;
+
+  @Prop()
+  lastMessageId?: string;
 }
 
 export const RoomSchema = SchemaFactory.createForClass(Room);

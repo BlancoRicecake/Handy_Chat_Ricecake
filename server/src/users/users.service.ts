@@ -28,6 +28,22 @@ export class UsersService {
     return this.userModel.findById(userId).lean();
   }
 
+  async findByIds(
+    userIds: string[],
+  ): Promise<Map<string, { _id: string; username: string }>> {
+    const users = await this.userModel
+      .find({ _id: { $in: userIds } })
+      .select('_id username')
+      .lean();
+
+    return new Map(
+      users.map((u) => [
+        u._id.toString(),
+        { _id: u._id.toString(), username: u.username },
+      ]),
+    );
+  }
+
   async validatePassword(user: User, password: string): Promise<boolean> {
     return bcrypt.compare(password, user.passwordHash);
   }
