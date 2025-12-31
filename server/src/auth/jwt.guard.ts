@@ -40,9 +40,10 @@ export class JwtGuard implements CanActivate {
         await this.jwtService.verifyAccessToken(token);
 
       // 메인서버 userId로 유저 캐시 레코드 찾기/생성
+      // username이 없으면 mainServerId를 사용 (unknown 중복 방지)
       const user = await this.usersService.findOrCreateByMainServerId(
         payload.id,
-        payload.username || 'unknown',
+        payload.username || payload.id,
       );
 
       // request.user에 mainServerId를 id로 설정 (기존 코드 호환)
