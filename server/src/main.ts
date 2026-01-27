@@ -4,6 +4,7 @@ import { AppModule } from './app.module';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import helmet from 'helmet';
 import * as compression from 'compression';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 async function bootstrap() {
   // CORS configuration with whitelist
@@ -62,6 +63,38 @@ async function bootstrap() {
   if (process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true') {
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
   }
+
+  // Chat API proxy configuration
+  // Proxies /chat-api/* requests to the chat server to avoid Mixed Content issues
+  const CHAT_SERVER_URL =
+    process.env.CHAT_SERVER_URL || 'http://16.176.147.141';
+  app.use(
+    '/chat-api',
+    createProxyMiddleware({
+      target: CHAT_SERVER_URL,
+      changeOrigin: true,
+      pathRewrite: { '^/chat-api': '' },
+      on: {
+        proxyReq: (proxyReq, req) => {
+          // Forward Authorization header
+          const authHeader = req.headers['authorization'];
+          if (authHeader) {
+            proxyReq.setHeader('Authorization', authHeader);
+          }
+        },
+        error: (err, req, res) => {
+          const logger = new Logger('ChatApiProxy');
+          logger.error(`Proxy error: ${err.message}`);
+          if (res && 'writeHead' in res) {
+            (res as any).writeHead(502, { 'Content-Type': 'application/json' });
+            (res as any).end(
+              JSON.stringify({ error: 'Chat server unavailable' }),
+            );
+          }
+        },
+      },
+    }),
+  );
 
   const port = process.env.PORT || 3000;
   const host = process.env.HOST || '0.0.0.0';

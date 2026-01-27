@@ -29,6 +29,7 @@
     "class-validator": "^0.14.0",
     "compression": "^1.8.1",
     "helmet": "^8.1.0",
+    "http-proxy-middleware": "^3.0.3",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.7.0",
     "nest-winston": "^1.9.5",
