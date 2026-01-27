@@ -68,6 +68,33 @@ async function bootstrap() {
   // Proxies /chat-api/* requests to the chat server to avoid Mixed Content issues
   const CHAT_SERVER_URL =
     process.env.CHAT_SERVER_URL || 'http://16.176.147.141';
+
+  // CORS handler for chat-api proxy (runs before proxy middleware)
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.use('/chat-api', (req: any, res: any, next: any) => {
+    const origin = req.headers.origin;
+    if (origin && corsOrigin.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader(
+        'Access-Control-Allow-Methods',
+        'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+      );
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization',
+      );
+    }
+
+    // Handle preflight OPTIONS request
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+
+    next();
+  });
+
   app.use(
     '/chat-api',
     createProxyMiddleware({
@@ -80,6 +107,14 @@ async function bootstrap() {
           const authHeader = req.headers['authorization'];
           if (authHeader) {
             proxyReq.setHeader('Authorization', authHeader);
+          }
+        },
+        proxyRes: (proxyRes, req) => {
+          // Ensure CORS headers are preserved in proxy response
+          const origin = req.headers.origin as string;
+          if (origin && corsOrigin.includes(origin)) {
+            proxyRes.headers['access-control-allow-origin'] = origin;
+            proxyRes.headers['access-control-allow-credentials'] = 'true';
           }
         },
         error: (err, req, res) => {
