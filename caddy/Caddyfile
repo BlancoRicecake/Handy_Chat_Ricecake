@@ -17,17 +17,8 @@
 	}
 }
 
-# Health check endpoint for Docker (internal only)
+# Main server block (IP-based access for reverse proxy from main server)
 :80 {
-	handle /health {
-		reverse_proxy api:3000
-	}
-	# Redirect all other HTTP traffic to HTTPS
-	redir https://chat.h-andy.com{uri} permanent
-}
-
-# Main server block - Production domain with automatic HTTPS via Let's Encrypt
-chat.h-andy.com {
 	# Security headers (Caddy adds many by default)
 	header {
 		# HSTS
