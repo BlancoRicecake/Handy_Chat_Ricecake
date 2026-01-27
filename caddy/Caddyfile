@@ -17,14 +17,8 @@
 	}
 }
 
-# Main server block
-# For local development: localhost
-# For production: replace with your domain (e.g., yourdomain.com)
-:80, :443 {
-	# Automatic HTTPS
-	# In production with a real domain, Caddy will automatically obtain Let's Encrypt certificates
-	# For local development without a domain, Caddy will use self-signed certificates
-
+# Main server block (IP-based access for reverse proxy from main server)
+:80 {
 	# Security headers (Caddy adds many by default)
 	header {
 		# HSTS
