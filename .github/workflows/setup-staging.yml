@@ -34,7 +34,7 @@ jobs:
 
             echo "=== Fix containerd gRPC message size limit ==="
             sudo mkdir -p /etc/containerd
-            printf 'version = 2\n[grpc]\n  max_recv_message_size = 268435456\n  max_send_message_size = 268435456\n' | sudo tee /etc/containerd/config.toml
+            printf 'version = 3\n\n[grpc]\n  max_recv_message_size = 268435456\n  max_send_message_size = 268435456\n\n[proxy_plugins]\n  [proxy_plugins.soci]\n    type = "snapshot"\n    address = "/run/soci-snapshotter-grpc/soci-snapshotter-grpc.sock"\n' | sudo tee /etc/containerd/config.toml
             sudo systemctl restart containerd || true
             sudo systemctl restart docker
             echo "containerd gRPC limits updated"
@@ -56,7 +56,7 @@ jobs:
             echo "=== Verify Docker and Compose ==="
             docker --version || { echo "ERROR: Docker not installed"; exit 1; }
             docker buildx version || { echo "ERROR: Buildx not installed"; exit 1; }
-            docker-compose --version || { echo "ERROR: Docker Compose not installed"; exit 1; }
+            docker compose version || { echo "ERROR: Docker Compose not installed"; exit 1; }
             git --version || { echo "ERROR: Git not installed"; exit 1; }
 
       - name: Clone repo and write .env.staging
@@ -123,10 +123,10 @@ jobs:
             cd /opt/chat-staging
 
             echo "=== Building API and Caddy images ==="
-            docker-compose -f docker-compose.local-staging.yml build api caddy
+            docker compose -f docker-compose.local-staging.yml build api caddy
 
             echo "=== Starting infra services (mongo, redis) ==="
-            docker-compose -f docker-compose.local-staging.yml up -d mongo redis
+            docker compose -f docker-compose.local-staging.yml up -d mongo redis
 
             echo "=== Waiting for mongo/redis healthcheck ==="
             for i in $(seq 1 30); do
@@ -138,10 +138,10 @@ jobs:
             done
 
             echo "=== Starting API (--no-deps to skip re-checking mongo/redis) ==="
-            docker-compose -f docker-compose.local-staging.yml up -d --no-deps api
+            docker compose -f docker-compose.local-staging.yml up -d --no-deps api
 
             echo "=== Starting Caddy ==="
-            docker-compose -f docker-compose.local-staging.yml up -d --no-deps caddy
+            docker compose -f docker-compose.local-staging.yml up -d --no-deps caddy
 
             echo "=== Waiting for health check ==="
             HEALTH_OK=false
@@ -161,15 +161,15 @@ jobs:
             echo "  Code: /opt/chat-staging (branch: $(git branch --show-current))"
             echo "  Env:  /opt/chat-staging/.env.staging"
             echo "  Docker: $(docker --version)"
-            echo "  Compose: $(docker-compose --version)"
+            echo "  Compose: $(docker compose version)"
             echo "============================================"
-            docker-compose -f docker-compose.local-staging.yml ps
+            docker compose -f docker-compose.local-staging.yml ps
             echo "============================================"
             if [ "$HEALTH_OK" = "true" ]; then
               echo "  Health: OK"
             else
               echo "  Health: WARN - not responding yet, check logs"
-              docker-compose -f docker-compose.local-staging.yml logs --tail=20 api
+              docker compose -f docker-compose.local-staging.yml logs --tail=20 api
             fi
 
 # Required GitHub Secrets:
