@@ -16,41 +16,7 @@ jobs:
       TARGET_HOST: ${{ github.event.inputs.host || secrets.STAGING_EC2_HOST }}
 
     steps:
-      - name: Setup swap
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.TARGET_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: 22
-          command_timeout: 3m
-          script_stop: true
-          script: |
-            echo "=== Setup swap (2GB) ==="
-            free -h
-            sudo swapon --show | grep -q /swapfile && echo "Swap already active" || sudo dd if=/dev/zero of=/swapfile bs=128M count=16
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile 2>/dev/null || true
-            sudo swapon /swapfile 2>/dev/null || true
-            free -h
-
-      - name: Install Docker and Git
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.TARGET_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: 22
-          command_timeout: 10m
-          script_stop: true
-          script: |
-            echo "=== Installing Docker and Git ==="
-            sudo dnf install -y docker git
-            sudo systemctl enable docker
-            sudo systemctl start docker
-            sudo usermod -aG docker $USER
-
-      - name: Install Docker Compose
+      - name: Cleanup, swap, and verify Docker
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ env.TARGET_HOST }}
@@ -60,24 +26,31 @@ jobs:
           command_timeout: 5m
           script_stop: true
           script: |
-            echo "=== Installing Docker Buildx ==="
-            sudo mkdir -p /usr/local/lib/docker/cli-plugins
-            BUILDX_VERSION=0.19.3
-            sudo curl -SL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-arm64" \
-              -o /usr/local/lib/docker/cli-plugins/docker-buildx
-            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
-            echo "=== Installing Docker Compose ==="
-            sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
-              -o /usr/local/lib/docker/cli-plugins/docker-compose
-            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-            sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-            echo "=== Verify installations ==="
-            docker --version
-            docker buildx version
-            docker-compose --version
-            git --version
+            echo "=== Stop all containers (break OOM restart loops) ==="
+            docker stop $(docker ps -aq) 2>/dev/null || true
+            docker rm $(docker ps -aq) 2>/dev/null || true
 
-      - name: Clone repo and setup code
+            echo "=== Setup swap (2GB) ==="
+            free -h
+            if swapon --show | grep -q /swapfile; then
+              echo "Swap already active"
+            else
+              sudo fallocate -l 2G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+            fi
+            echo "vm.swappiness=10" | sudo tee /etc/sysctl.d/99-swappiness.conf
+            sudo sysctl vm.swappiness=10
+            free -h
+
+            echo "=== Verify Docker and Compose ==="
+            docker --version || { echo "ERROR: Docker not installed"; exit 1; }
+            docker buildx version || { echo "ERROR: Buildx not installed"; exit 1; }
+            docker-compose --version || { echo "ERROR: Docker Compose not installed"; exit 1; }
+            git --version || { echo "ERROR: Git not installed"; exit 1; }
+
+      - name: Clone repo and write .env.staging
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ env.TARGET_HOST }}
@@ -91,24 +64,12 @@ jobs:
             sudo rm -rf /opt/chat-staging
             sudo mkdir -p /opt/chat-staging
             sudo chown ec2-user:ec2-user /opt/chat-staging
+
             echo "=== Clone repository ==="
             git clone -b develop https://github.com/BlancoRicecake/Handy_Chat_Ricecake.git /opt/chat-staging
-            echo "=== Verify code ==="
-            ls -la /opt/chat-staging/
             cd /opt/chat-staging && git branch --show-current
+            ls -la
 
-      - name: Deploy .env.staging
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.TARGET_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: 22
-          command_timeout: 5m
-          script_stop: true
-          envs: STAGING_ENV_CONTENT
-          script: |
-            set -euo pipefail
             echo "=== Writing .env.staging ==="
             cat > /opt/chat-staging/.env.staging << 'ENVEOF'
             NODE_ENV=staging
@@ -151,12 +112,13 @@ jobs:
           script_stop: true
           script: |
             cd /opt/chat-staging
-            echo "=== Stopping existing containers ==="
-            docker-compose -f docker-compose.local-staging.yml down 2>/dev/null || true
+
             echo "=== Building API image ==="
             docker-compose -f docker-compose.local-staging.yml build api
+
             echo "=== Starting infra services (mongo, redis) ==="
             docker-compose -f docker-compose.local-staging.yml up -d mongo redis
+
             echo "=== Waiting for mongo/redis healthcheck ==="
             for i in $(seq 1 30); do
               MONGO_OK=$(docker inspect --format='{{.State.Health.Status}}' chat-staging-mongo-1 2>/dev/null || echo "starting")
@@ -165,39 +127,38 @@ jobs:
               if [ "$MONGO_OK" = "healthy" ] && [ "$REDIS_OK" = "healthy" ]; then break; fi
               sleep 5
             done
+
             echo "=== Starting API and Caddy ==="
             docker-compose -f docker-compose.local-staging.yml up -d
+
             echo "=== Waiting for health check ==="
+            HEALTH_OK=false
             for i in $(seq 1 12); do
-              if curl -sf http://localhost/health; then echo " Health OK"; break; fi
+              if curl -sf http://localhost/health; then
+                echo " Health OK"
+                HEALTH_OK=true
+                break
+              fi
               echo "  [$i] waiting..."
               sleep 10
             done
-            docker-compose -f docker-compose.local-staging.yml ps
 
-      - name: Setup complete summary
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.TARGET_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: 22
-          command_timeout: 5m
-          script: |
             echo "============================================"
             echo "  STAGING SERVER SETUP COMPLETE"
             echo "============================================"
-            echo "  Code: /opt/chat-staging (branch: $(cd /opt/chat-staging && git branch --show-current))"
+            echo "  Code: /opt/chat-staging (branch: $(git branch --show-current))"
             echo "  Env:  /opt/chat-staging/.env.staging"
             echo "  Docker: $(docker --version)"
             echo "  Compose: $(docker-compose --version)"
             echo "============================================"
-            echo ""
-            echo "  Container Status:"
-            docker-compose -f /opt/chat-staging/docker-compose.local-staging.yml ps
-            echo ""
-            curl -sf http://localhost/health && echo "  Health: OK" || echo "  Health: WARN - not responding yet"
+            docker-compose -f docker-compose.local-staging.yml ps
             echo "============================================"
+            if [ "$HEALTH_OK" = "true" ]; then
+              echo "  Health: OK"
+            else
+              echo "  Health: WARN - not responding yet, check logs"
+              docker-compose -f docker-compose.local-staging.yml logs --tail=20 api
+            fi
 
 # Required GitHub Secrets:
 #   - EC2_SSH_PRIVATE_KEY: SSH private key

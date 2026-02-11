@@ -186,9 +186,9 @@ deploy_application() {
 
     cd "$PROJECT_ROOT"
 
-    # Pull latest images (for base images like mongo, redis, minio)
+    # Pull latest images (for base images like mongo, redis)
     log_info "Pulling base images..."
-    docker-compose -f "$COMPOSE_FILE" pull mongo redis minio || true
+    docker-compose -f "$COMPOSE_FILE" pull mongo redis || true
 
     # Build and restart services
     log_info "Building and restarting services..."
@@ -213,7 +213,7 @@ verify_deployment() {
 
     # Check if containers are running
     local running=$(docker-compose -f "$COMPOSE_FILE" ps -q | wc -l)
-    local expected=5  # caddy, api, mongo, redis, minio
+    local expected=4  # caddy, api, mongo, redis
 
     if [ "$running" -lt "$expected" ]; then
         log_error "Not all containers are running ($running/$expected)"
@@ -327,7 +327,6 @@ main() {
     log_success "Staging Deployment Completed Successfully!"
     log_success "========================================="
     log_info ""
-    log_info "Staging URL: http://54.180.52.81"
     log_info "Check logs: docker-compose -f $COMPOSE_FILE logs -f"
     log_info "Monitor resources: docker stats"
     log_info ""
