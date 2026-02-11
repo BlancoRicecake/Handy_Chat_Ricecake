@@ -32,6 +32,13 @@ jobs:
             echo "=== Prune Docker resources ==="
             docker system prune -af --volumes 2>/dev/null || true
 
+            echo "=== Fix containerd gRPC message size limit ==="
+            sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+            sudo sed -i '/\[grpc\]/a\  max_recv_message_size = 268435456\n  max_send_message_size = 268435456' /etc/containerd/config.toml
+            sudo systemctl restart containerd
+            sudo systemctl restart docker
+            echo "containerd gRPC limits updated"
+
             echo "=== Setup swap (2GB) ==="
             free -h
             if swapon --show | grep -q /swapfile; then
