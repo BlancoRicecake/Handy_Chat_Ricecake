@@ -58,27 +58,21 @@ jobs:
             set -euo pipefail
 
             echo "=== Setup project directory ==="
-            sudo mkdir -p /opt/chat-staging
-            sudo chown ec2-user:ec2-user /opt/chat-staging
-
-            echo "=== Clone repository ==="
             if [ -d "/opt/chat-staging/.git" ]; then
               echo "Repo already cloned, pulling latest..."
               cd /opt/chat-staging
               git pull origin develop
             else
-              # Clean up if directory has files but no .git (e.g., tarball deployment)
-              if [ -d "/opt/chat-staging" ] && [ "$(ls -A /opt/chat-staging)" ]; then
-                echo "Directory exists without .git, cleaning for fresh clone..."
-                rm -rf /opt/chat-staging/*
-                rm -rf /opt/chat-staging/.[!.]* 2>/dev/null || true
-              fi
+              echo "Fresh clone needed, cleaning directory..."
+              sudo rm -rf /opt/chat-staging
+              sudo mkdir -p /opt/chat-staging
+              sudo chown ec2-user:ec2-user /opt/chat-staging
               git clone -b develop https://github.com/BlancoRicecake/Handy_Chat_Ricecake.git /opt/chat-staging
             fi
 
             echo "=== Verify code ==="
             ls -la /opt/chat-staging/
-            echo "Branch: $(cd /opt/chat-staging && git branch --show-current)"
+            cd /opt/chat-staging && git branch --show-current
 
       - name: Deploy .env.staging
         uses: appleboy/ssh-action@v1.0.0
