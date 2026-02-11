@@ -16,51 +16,97 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-northeast-2
 
-      - name: Discover production instance config
-        id: prod
+      - name: Discover existing infrastructure
+        id: infra
         run: |
-          PROD_IP="${{ secrets.EC2_HOST }}"
-          echo "Looking up production instance by IP: $PROD_IP"
+          echo "=== Looking for existing instances ==="
+          aws ec2 describe-instances \
+            --filters "Name=instance-state-name,Values=running,stopped" \
+            --query 'Reservations[].Instances[].{Id:InstanceId,Name:Tags[?Key==`Name`]|[0].Value,State:State.Name,IP:PublicIpAddress,KeyName:KeyName,VPC:VpcId,Subnet:SubnetId,SGs:SecurityGroups[*].GroupId}' \
+            --output table || true
 
-          # Find production instance by public IP
-          PROD_INSTANCE=$(aws ec2 describe-instances \
-            --filters "Name=ip-address,Values=$PROD_IP" \
-            --query 'Reservations[0].Instances[0]' --output json)
+          echo ""
+          echo "=== Looking for key pairs ==="
+          aws ec2 describe-key-pairs --query 'KeyPairs[*].KeyName' --output table
 
-          echo "$PROD_INSTANCE" | head -5
+          echo ""
+          echo "=== Getting default VPC ==="
+          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" \
+            --query 'Vpcs[0].VpcId' --output text)
+          echo "Default VPC: $VPC_ID"
 
-          # Extract config from production instance
-          KEY_NAME=$(echo "$PROD_INSTANCE" | jq -r '.KeyName')
-          VPC_ID=$(echo "$PROD_INSTANCE" | jq -r '.VpcId')
-          SUBNET_ID=$(echo "$PROD_INSTANCE" | jq -r '.SubnetId')
-          SG_IDS=$(echo "$PROD_INSTANCE" | jq -r '[.SecurityGroups[].GroupId] | join(",")')
-          AMI_ID=$(echo "$PROD_INSTANCE" | jq -r '.ImageId')
-          ARCH=$(echo "$PROD_INSTANCE" | jq -r '.Architecture')
+          echo ""
+          echo "=== Getting subnet with public IP auto-assign ==="
+          SUBNET_ID=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=$VPC_ID" "Name=map-public-ip-on-launch,Values=true" \
+            --query 'Subnets[0].SubnetId' --output text)
 
-          echo "Key pair: $KEY_NAME"
-          echo "VPC: $VPC_ID"
+          if [ "$SUBNET_ID" = "None" ] || [ -z "$SUBNET_ID" ]; then
+            echo "No subnet with auto-assign public IP, using first subnet"
+            SUBNET_ID=$(aws ec2 describe-subnets \
+              --filters "Name=vpc-id,Values=$VPC_ID" \
+              --query 'Subnets[0].SubnetId' --output text)
+          fi
           echo "Subnet: $SUBNET_ID"
-          echo "Security Groups: $SG_IDS"
-          echo "AMI: $AMI_ID"
-          echo "Architecture: $ARCH"
 
-          echo "key_name=$KEY_NAME" >> $GITHUB_OUTPUT
+          echo ""
+          echo "=== Getting default security group ==="
+          SG_ID=$(aws ec2 describe-security-groups \
+            --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=default" \
+            --query 'SecurityGroups[0].GroupId' --output text)
+          echo "Security Group: $SG_ID"
+
+          echo ""
+          echo "=== Getting latest AL2023 ARM64 AMI ==="
+          AMI_ID=$(aws ec2 describe-images \
+            --owners amazon \
+            --filters "Name=name,Values=al2023-ami-2023*-kernel-*-arm64" "Name=state,Values=available" \
+            --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text)
+          echo "AMI: $AMI_ID"
+
+          echo ""
+          echo "=== Getting key pair name from existing instances ==="
+          KEY_NAME=$(aws ec2 describe-instances \
+            --filters "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].KeyName' --output text 2>/dev/null || echo "")
+
+          if [ -z "$KEY_NAME" ] || [ "$KEY_NAME" = "None" ]; then
+            KEY_NAME=$(aws ec2 describe-key-pairs --query 'KeyPairs[0].KeyName' --output text)
+          fi
+          echo "Key pair: $KEY_NAME"
+
+          # Also try to get SG from existing instance (likely has proper ports open)
+          EXISTING_SG=$(aws ec2 describe-instances \
+            --filters "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_SG" ] && [ "$EXISTING_SG" != "None" ]; then
+            SG_ID="$EXISTING_SG"
+            echo "Using security group from existing instance: $SG_ID"
+          fi
+
           echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
           echo "subnet_id=$SUBNET_ID" >> $GITHUB_OUTPUT
-          echo "sg_ids=$SG_IDS" >> $GITHUB_OUTPUT
+          echo "sg_id=$SG_ID" >> $GITHUB_OUTPUT
           echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
+          echo "key_name=$KEY_NAME" >> $GITHUB_OUTPUT
 
       - name: Create staging instance
         id: staging
         run: |
           echo "Creating staging instance..."
+          echo "  AMI: ${{ steps.infra.outputs.ami_id }}"
+          echo "  Key: ${{ steps.infra.outputs.key_name }}"
+          echo "  SG:  ${{ steps.infra.outputs.sg_id }}"
+          echo "  Subnet: ${{ steps.infra.outputs.subnet_id }}"
 
           INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ${{ steps.prod.outputs.ami_id }} \
+            --image-id ${{ steps.infra.outputs.ami_id }} \
             --instance-type t4g.small \
-            --key-name ${{ steps.prod.outputs.key_name }} \
-            --security-group-ids ${{ steps.prod.outputs.sg_ids }} \
-            --subnet-id ${{ steps.prod.outputs.subnet_id }} \
+            --key-name ${{ steps.infra.outputs.key_name }} \
+            --security-group-ids ${{ steps.infra.outputs.sg_id }} \
+            --subnet-id ${{ steps.infra.outputs.subnet_id }} \
+            --associate-public-ip-address \
             --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=handy-chat-staging}]' \
             --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}}]' \
             --query 'Instances[0].InstanceId' --output text)
@@ -90,7 +136,7 @@ jobs:
           echo ""
           echo "  Next steps:"
           echo "  1. Add GitHub Secret: STAGING_EC2_HOST = ${{ steps.staging.outputs.instance_ip }}"
-          echo "  2. SSH into server and run setup script"
+          echo "  2. Run CD workflow to deploy"
           echo "============================================"
 
       - name: Setup staging server
