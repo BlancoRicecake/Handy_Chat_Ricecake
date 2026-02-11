@@ -212,7 +212,7 @@ jobs:
             sudo usermod -aG docker $USER
             echo "=== Fix containerd gRPC message size limit ==="
             sudo mkdir -p /etc/containerd
-            printf 'version = 3\n\n[grpc]\n  max_recv_message_size = 268435456\n  max_send_message_size = 268435456\n\n[proxy_plugins]\n  [proxy_plugins.soci]\n    type = "snapshot"\n    address = "/run/soci-snapshotter-grpc/soci-snapshotter-grpc.sock"\n' | sudo tee /etc/containerd/config.toml
+            printf 'version = 3\n\n[grpc]\n  max_recv_message_size = 268435456\n  max_send_message_size = 268435456\n' | sudo tee /etc/containerd/config.toml
             sudo systemctl restart containerd || true
             sudo systemctl restart docker
             echo "=== Installing Docker Buildx ==="
