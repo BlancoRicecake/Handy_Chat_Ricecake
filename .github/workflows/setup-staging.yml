@@ -14,7 +14,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install dependencies and Docker
+      - name: Setup swap
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.host }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 3m
+          script_stop: true
+          script: |
+            echo "=== Setup swap (2GB) ==="
+            free -h
+            sudo swapon --show | grep -q /swapfile && echo "Swap already active" || sudo dd if=/dev/zero of=/swapfile bs=128M count=16
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile 2>/dev/null || true
+            sudo swapon /swapfile 2>/dev/null || true
+            free -h
+
+      - name: Install Docker and Git
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ github.event.inputs.host }}
@@ -24,28 +42,28 @@ jobs:
           command_timeout: 10m
           script_stop: true
           script: |
-            echo "=== Stop running containers ==="
-            docker stop $(docker ps -q) 2>/dev/null || true
-            docker system prune -f 2>/dev/null || true
-
-            echo "=== Setup swap (2GB) ==="
-            sudo bash -c 'swapon --show | grep -q /swapfile && echo "Swap already active" || { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile; }'
-            free -h
-
-            echo "=== Installing Docker ==="
-            sudo dnf update -y
+            echo "=== Installing Docker and Git ==="
             sudo dnf install -y docker git
             sudo systemctl enable docker
             sudo systemctl start docker
             sudo usermod -aG docker $USER
 
+      - name: Install Docker Compose
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.host }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 5m
+          script_stop: true
+          script: |
             echo "=== Installing Docker Compose ==="
             sudo mkdir -p /usr/local/lib/docker/cli-plugins
             sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
               -o /usr/local/lib/docker/cli-plugins/docker-compose
             sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
             sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-
             echo "=== Verify installations ==="
             docker --version
             docker-compose --version
