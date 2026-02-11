@@ -115,8 +115,8 @@ jobs:
           script: |
             cd /opt/chat-staging
 
-            echo "=== Building API image ==="
-            docker-compose -f docker-compose.local-staging.yml build api
+            echo "=== Building API and Caddy images ==="
+            docker-compose -f docker-compose.local-staging.yml build api caddy
 
             echo "=== Starting infra services (mongo, redis) ==="
             docker-compose -f docker-compose.local-staging.yml up -d mongo redis
@@ -130,8 +130,11 @@ jobs:
               sleep 5
             done
 
-            echo "=== Starting API and Caddy ==="
-            docker-compose -f docker-compose.local-staging.yml up -d
+            echo "=== Starting API (--no-deps to skip re-checking mongo/redis) ==="
+            docker-compose -f docker-compose.local-staging.yml up -d --no-deps api
+
+            echo "=== Starting Caddy ==="
+            docker-compose -f docker-compose.local-staging.yml up -d --no-deps caddy
 
             echo "=== Waiting for health check ==="
             HEALTH_OK=false
