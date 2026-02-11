@@ -16,20 +16,35 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-northeast-2
 
-      - name: Discover existing infrastructure
+      - name: Import SSH key pair
+        id: keypair
+        run: |
+          KEY_PAIR_NAME="handy-staging-key"
+
+          # Check if key pair already exists
+          EXISTING=$(aws ec2 describe-key-pairs --key-names "$KEY_PAIR_NAME" 2>/dev/null || true)
+          if echo "$EXISTING" | grep -q "$KEY_PAIR_NAME"; then
+            echo "Key pair '$KEY_PAIR_NAME' already exists"
+          else
+            echo "Importing key pair from EC2_SSH_PRIVATE_KEY secret..."
+            # Extract public key from private key
+            echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > /tmp/privkey.pem
+            chmod 600 /tmp/privkey.pem
+            ssh-keygen -y -f /tmp/privkey.pem > /tmp/pubkey.pub
+            rm /tmp/privkey.pem
+
+            aws ec2 import-key-pair \
+              --key-name "$KEY_PAIR_NAME" \
+              --public-key-material fileb:///tmp/pubkey.pub
+            rm /tmp/pubkey.pub
+            echo "Key pair imported successfully"
+          fi
+
+          echo "key_name=$KEY_PAIR_NAME" >> $GITHUB_OUTPUT
+
+      - name: Discover infrastructure
         id: infra
         run: |
-          echo "=== Looking for existing instances ==="
-          aws ec2 describe-instances \
-            --filters "Name=instance-state-name,Values=running,stopped" \
-            --query 'Reservations[].Instances[].{Id:InstanceId,Name:Tags[?Key==`Name`]|[0].Value,State:State.Name,IP:PublicIpAddress,KeyName:KeyName,VPC:VpcId,Subnet:SubnetId,SGs:SecurityGroups[*].GroupId}' \
-            --output table || true
-
-          echo ""
-          echo "=== Looking for key pairs ==="
-          aws ec2 describe-key-pairs --query 'KeyPairs[*].KeyName' --output table
-
-          echo ""
           echo "=== Getting default VPC ==="
           VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" \
             --query 'Vpcs[0].VpcId' --output text)
@@ -50,10 +65,27 @@ jobs:
           echo "Subnet: $SUBNET_ID"
 
           echo ""
-          echo "=== Getting default security group ==="
+          echo "=== Setting up security group ==="
+          SG_NAME="handy-staging-sg"
           SG_ID=$(aws ec2 describe-security-groups \
-            --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=default" \
-            --query 'SecurityGroups[0].GroupId' --output text)
+            --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=$SG_NAME" \
+            --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "None")
+
+          if [ "$SG_ID" = "None" ] || [ -z "$SG_ID" ]; then
+            echo "Creating security group..."
+            SG_ID=$(aws ec2 create-security-group \
+              --group-name "$SG_NAME" \
+              --description "Handy Chat Staging - SSH, HTTP, HTTPS" \
+              --vpc-id "$VPC_ID" \
+              --query 'GroupId' --output text)
+
+            aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
+              --ip-permissions \
+              '[{"IpProtocol":"tcp","FromPort":22,"ToPort":22,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]},{"IpProtocol":"tcp","FromPort":80,"ToPort":80,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]},{"IpProtocol":"tcp","FromPort":443,"ToPort":443,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}]'
+            echo "Security group created with SSH/HTTP/HTTPS rules"
+          else
+            echo "Security group already exists: $SG_ID"
+          fi
           echo "Security Group: $SG_ID"
 
           echo ""
@@ -64,46 +96,24 @@ jobs:
             --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text)
           echo "AMI: $AMI_ID"
 
-          echo ""
-          echo "=== Getting key pair name from existing instances ==="
-          KEY_NAME=$(aws ec2 describe-instances \
-            --filters "Name=instance-state-name,Values=running" \
-            --query 'Reservations[0].Instances[0].KeyName' --output text 2>/dev/null || echo "")
-
-          if [ -z "$KEY_NAME" ] || [ "$KEY_NAME" = "None" ]; then
-            KEY_NAME=$(aws ec2 describe-key-pairs --query 'KeyPairs[0].KeyName' --output text)
-          fi
-          echo "Key pair: $KEY_NAME"
-
-          # Also try to get SG from existing instance (likely has proper ports open)
-          EXISTING_SG=$(aws ec2 describe-instances \
-            --filters "Name=instance-state-name,Values=running" \
-            --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")
-
-          if [ -n "$EXISTING_SG" ] && [ "$EXISTING_SG" != "None" ]; then
-            SG_ID="$EXISTING_SG"
-            echo "Using security group from existing instance: $SG_ID"
-          fi
-
           echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
           echo "subnet_id=$SUBNET_ID" >> $GITHUB_OUTPUT
           echo "sg_id=$SG_ID" >> $GITHUB_OUTPUT
           echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
-          echo "key_name=$KEY_NAME" >> $GITHUB_OUTPUT
 
       - name: Create staging instance
         id: staging
         run: |
           echo "Creating staging instance..."
           echo "  AMI: ${{ steps.infra.outputs.ami_id }}"
-          echo "  Key: ${{ steps.infra.outputs.key_name }}"
+          echo "  Key: ${{ steps.keypair.outputs.key_name }}"
           echo "  SG:  ${{ steps.infra.outputs.sg_id }}"
           echo "  Subnet: ${{ steps.infra.outputs.subnet_id }}"
 
           INSTANCE_ID=$(aws ec2 run-instances \
             --image-id ${{ steps.infra.outputs.ami_id }} \
             --instance-type t4g.small \
-            --key-name ${{ steps.infra.outputs.key_name }} \
+            --key-name ${{ steps.keypair.outputs.key_name }} \
             --security-group-ids ${{ steps.infra.outputs.sg_id }} \
             --subnet-id ${{ steps.infra.outputs.subnet_id }} \
             --associate-public-ip-address \
