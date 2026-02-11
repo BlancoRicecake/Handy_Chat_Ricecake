@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup staging server
+      - name: Install dependencies and Docker
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ github.event.inputs.host }}
@@ -45,8 +45,102 @@ jobs:
             docker-compose --version
             git --version
 
+      - name: Clone repo and setup code
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.host }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            set -euo pipefail
+
             echo "=== Setup project directory ==="
             sudo mkdir -p /opt/chat-staging
-            sudo chown $USER:$USER /opt/chat-staging
+            sudo chown ec2-user:ec2-user /opt/chat-staging
 
-            echo "=== Setup complete ==="
+            echo "=== Clone repository ==="
+            if [ -d "/opt/chat-staging/.git" ]; then
+              echo "Repo already cloned, pulling latest..."
+              cd /opt/chat-staging
+              git pull origin develop
+            else
+              git clone -b develop https://github.com/BlancoRicecake/Handy_Chat_Ricecake.git /opt/chat-staging
+            fi
+
+            echo "=== Verify code ==="
+            ls -la /opt/chat-staging/
+            echo "Branch: $(cd /opt/chat-staging && git branch --show-current)"
+
+      - name: Deploy .env.staging
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.host }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 5m
+          script_stop: true
+          envs: STAGING_ENV_CONTENT
+          script: |
+            set -euo pipefail
+            echo "=== Writing .env.staging ==="
+            cat > /opt/chat-staging/.env.staging << 'ENVEOF'
+            NODE_ENV=staging
+            PORT=3000
+            HOST=0.0.0.0
+            TRUST_PROXY=1
+            MONGO_URI=mongodb://mongo:27017/chatdb_stage
+            REDIS_URL=redis://redis:6379/0
+            JWT_SECRET_CURRENT=${{ secrets.STAGING_JWT_SECRET }}
+            JWT_SECRET_PREVIOUS=
+            ACCESS_TOKEN_EXPIRY=7d
+            REFRESH_TOKEN_EXPIRY=7d
+            JWT_CLOCK_TOLERANCE=60
+            USE_ROTATED_JWT=false
+            ENABLE_REFRESH_TOKEN=false
+            ENFORCE_SINGLE_SESSION=false
+            USE_AWS_SECRETS=false
+            SECRET_CACHE_TTL=300000
+            AWS_SECRETS_FAIL_OPEN=false
+            CORS_ORIGIN=http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:8080,https://localhost:8443,https://stage-handy.com,https://www.stage-handy.com,https://h-andy.com,https://www.h-andy.com
+            LOG_LEVEL=debug
+            USE_S3=false
+            S3_ENDPOINT=http://minio:9000
+            S3_BUCKET_NAME=chat-files
+            S3_ACCESS_KEY=minioadmin
+            S3_SECRET_KEY=minioadmin
+            S3_REGION=us-east-1
+            S3_USE_PATH_STYLE=true
+            CHAT_SERVER_URL=http://localhost:3000
+            ENVEOF
+
+            # Remove leading whitespace from heredoc
+            sed -i 's/^            //' /opt/chat-staging/.env.staging
+
+            echo "=== .env.staging created ==="
+            wc -l /opt/chat-staging/.env.staging
+
+      - name: Setup complete summary
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.host }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 5m
+          script: |
+            echo "============================================"
+            echo "  STAGING SERVER SETUP COMPLETE"
+            echo "============================================"
+            echo "  Code: /opt/chat-staging (branch: $(cd /opt/chat-staging && git branch --show-current))"
+            echo "  Env:  /opt/chat-staging/.env.staging"
+            echo "  Docker: $(docker --version)"
+            echo "  Compose: $(docker-compose --version)"
+            echo "============================================"
+
+# Required GitHub Secrets:
+#   - EC2_SSH_PRIVATE_KEY: SSH private key
+#   - STAGING_JWT_SECRET: JWT secret for staging (synced with handy-platform)
