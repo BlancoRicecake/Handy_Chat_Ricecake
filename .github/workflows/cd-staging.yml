@@ -16,7 +16,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.STAGING_EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
+          username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
           command_timeout: 10m
@@ -27,6 +27,5 @@ jobs:
             ./server/scripts/deploy-staging.sh
 
 # Required GitHub Secrets:
-#   - STAGING_EC2_HOST: Staging EC2 public IP (NEW - must be added)
+#   - STAGING_EC2_HOST: Staging EC2 public IP (must be added)
 #   - EC2_SSH_PRIVATE_KEY: SSH private key (existing, shared with production)
-#   - EC2_USERNAME: SSH username (existing, shared with production)
