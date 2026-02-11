@@ -55,21 +55,12 @@ jobs:
           command_timeout: 10m
           script_stop: true
           script: |
-            set -euo pipefail
-
             echo "=== Setup project directory ==="
-            if [ -d "/opt/chat-staging/.git" ]; then
-              echo "Repo already cloned, pulling latest..."
-              cd /opt/chat-staging
-              git pull origin develop
-            else
-              echo "Fresh clone needed, cleaning directory..."
-              sudo rm -rf /opt/chat-staging
-              sudo mkdir -p /opt/chat-staging
-              sudo chown ec2-user:ec2-user /opt/chat-staging
-              git clone -b develop https://github.com/BlancoRicecake/Handy_Chat_Ricecake.git /opt/chat-staging
-            fi
-
+            sudo rm -rf /opt/chat-staging
+            sudo mkdir -p /opt/chat-staging
+            sudo chown ec2-user:ec2-user /opt/chat-staging
+            echo "=== Clone repository ==="
+            git clone -b develop https://github.com/BlancoRicecake/Handy_Chat_Ricecake.git /opt/chat-staging
             echo "=== Verify code ==="
             ls -la /opt/chat-staging/
             cd /opt/chat-staging && git branch --show-current
