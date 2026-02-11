@@ -6,7 +6,7 @@ on:
       host:
         description: 'Staging server IP'
         required: true
-        default: '3.35.224.88'
+        default: '54.180.52.81'
 
 jobs:
   setup:
@@ -67,6 +67,12 @@ jobs:
               cd /opt/chat-staging
               git pull origin develop
             else
+              # Clean up if directory has files but no .git (e.g., tarball deployment)
+              if [ -d "/opt/chat-staging" ] && [ "$(ls -A /opt/chat-staging)" ]; then
+                echo "Directory exists without .git, cleaning for fresh clone..."
+                rm -rf /opt/chat-staging/*
+                rm -rf /opt/chat-staging/.[!.]* 2>/dev/null || true
+              fi
               git clone -b develop https://github.com/BlancoRicecake/Handy_Chat_Ricecake.git /opt/chat-staging
             fi
 
@@ -123,6 +129,21 @@ jobs:
             echo "=== .env.staging created ==="
             wc -l /opt/chat-staging/.env.staging
 
+      - name: Build and start containers
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.host }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 15m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/chat-staging
+            chmod +x server/scripts/deploy-staging.sh
+            ./server/scripts/deploy-staging.sh --no-pull
+
       - name: Setup complete summary
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -139,6 +160,12 @@ jobs:
             echo "  Env:  /opt/chat-staging/.env.staging"
             echo "  Docker: $(docker --version)"
             echo "  Compose: $(docker-compose --version)"
+            echo "============================================"
+            echo ""
+            echo "  Container Status:"
+            docker-compose -f /opt/chat-staging/docker-compose.local-staging.yml ps
+            echo ""
+            curl -sf http://localhost/health && echo "  Health: OK" || echo "  Health: WARN - not responding yet"
             echo "============================================"
 
 # Required GitHub Secrets:
