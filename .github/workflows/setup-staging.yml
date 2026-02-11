@@ -24,15 +24,12 @@ jobs:
           command_timeout: 10m
           script_stop: true
           script: |
-            set -euo pipefail
+            echo "=== Stop running containers ==="
+            docker stop $(docker ps -q) 2>/dev/null || true
+            docker system prune -f 2>/dev/null || true
 
             echo "=== Setup swap (2GB) ==="
-            sudo swapoff /swapfile 2>/dev/null || true
-            sudo rm -f /swapfile
-            sudo fallocate -l 2G /swapfile
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile
+            sudo bash -c 'swapon --show | grep -q /swapfile && echo "Swap already active" || { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile; }'
             free -h
 
             echo "=== Installing Docker ==="
