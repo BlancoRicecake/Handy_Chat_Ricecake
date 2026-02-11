@@ -161,17 +161,24 @@ jobs:
             docker-compose -f docker-compose.local-staging.yml down 2>/dev/null || true
             echo "=== Building API image ==="
             docker-compose -f docker-compose.local-staging.yml build api
-            echo "=== Starting infra services first (mongo, redis, nginx) ==="
+            echo "=== Starting infra services (mongo, redis) ==="
             docker-compose -f docker-compose.local-staging.yml up -d mongo redis
-            sleep 5
-            echo "=== Starting API ==="
-            docker-compose -f docker-compose.local-staging.yml up -d api
-            sleep 5
-            echo "=== Starting nginx ==="
-            docker-compose -f docker-compose.local-staging.yml up -d nginx
+            echo "=== Waiting for mongo/redis healthcheck ==="
+            for i in $(seq 1 30); do
+              MONGO_OK=$(docker inspect --format='{{.State.Health.Status}}' chat-staging-mongo-1 2>/dev/null || echo "starting")
+              REDIS_OK=$(docker inspect --format='{{.State.Health.Status}}' chat-staging-redis-1 2>/dev/null || echo "starting")
+              echo "  [$i] mongo=$MONGO_OK redis=$REDIS_OK"
+              if [ "$MONGO_OK" = "healthy" ] && [ "$REDIS_OK" = "healthy" ]; then break; fi
+              sleep 5
+            done
+            echo "=== Starting API and Caddy ==="
+            docker-compose -f docker-compose.local-staging.yml up -d
             echo "=== Waiting for health check ==="
-            sleep 15
-            curl -sf http://localhost/health || echo "Health check pending..."
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost/health; then echo " Health OK"; break; fi
+              echo "  [$i] waiting..."
+              sleep 10
+            done
             docker-compose -f docker-compose.local-staging.yml ps
 
       - name: Setup complete summary
