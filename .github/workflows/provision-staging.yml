@@ -1,0 +1,133 @@
+name: Provision Staging Instance
+
+on:
+  workflow_dispatch:
+
+jobs:
+  provision:
+    name: Create Staging EC2 Instance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-2
+
+      - name: Discover production instance config
+        id: prod
+        run: |
+          PROD_IP="${{ secrets.EC2_HOST }}"
+          echo "Looking up production instance by IP: $PROD_IP"
+
+          # Find production instance by public IP
+          PROD_INSTANCE=$(aws ec2 describe-instances \
+            --filters "Name=ip-address,Values=$PROD_IP" \
+            --query 'Reservations[0].Instances[0]' --output json)
+
+          echo "$PROD_INSTANCE" | head -5
+
+          # Extract config from production instance
+          KEY_NAME=$(echo "$PROD_INSTANCE" | jq -r '.KeyName')
+          VPC_ID=$(echo "$PROD_INSTANCE" | jq -r '.VpcId')
+          SUBNET_ID=$(echo "$PROD_INSTANCE" | jq -r '.SubnetId')
+          SG_IDS=$(echo "$PROD_INSTANCE" | jq -r '[.SecurityGroups[].GroupId] | join(",")')
+          AMI_ID=$(echo "$PROD_INSTANCE" | jq -r '.ImageId')
+          ARCH=$(echo "$PROD_INSTANCE" | jq -r '.Architecture')
+
+          echo "Key pair: $KEY_NAME"
+          echo "VPC: $VPC_ID"
+          echo "Subnet: $SUBNET_ID"
+          echo "Security Groups: $SG_IDS"
+          echo "AMI: $AMI_ID"
+          echo "Architecture: $ARCH"
+
+          echo "key_name=$KEY_NAME" >> $GITHUB_OUTPUT
+          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
+          echo "subnet_id=$SUBNET_ID" >> $GITHUB_OUTPUT
+          echo "sg_ids=$SG_IDS" >> $GITHUB_OUTPUT
+          echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
+
+      - name: Create staging instance
+        id: staging
+        run: |
+          echo "Creating staging instance..."
+
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id ${{ steps.prod.outputs.ami_id }} \
+            --instance-type t4g.small \
+            --key-name ${{ steps.prod.outputs.key_name }} \
+            --security-group-ids ${{ steps.prod.outputs.sg_ids }} \
+            --subnet-id ${{ steps.prod.outputs.subnet_id }} \
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=handy-chat-staging}]' \
+            --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}}]' \
+            --query 'Instances[0].InstanceId' --output text)
+
+          echo "Instance ID: $INSTANCE_ID"
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+
+          echo "Waiting for instance to be running..."
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+
+          echo "Waiting for status checks..."
+          aws ec2 wait instance-status-ok --instance-ids $INSTANCE_ID
+
+          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+
+          echo "instance_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+
+      - name: Print staging instance info
+        run: |
+          echo "============================================"
+          echo "  STAGING INSTANCE CREATED SUCCESSFULLY"
+          echo "============================================"
+          echo ""
+          echo "  Instance ID: ${{ steps.staging.outputs.instance_id }}"
+          echo "  Public IP:   ${{ steps.staging.outputs.instance_ip }}"
+          echo ""
+          echo "  Next steps:"
+          echo "  1. Add GitHub Secret: STAGING_EC2_HOST = ${{ steps.staging.outputs.instance_ip }}"
+          echo "  2. SSH into server and run setup script"
+          echo "============================================"
+
+      - name: Setup staging server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ steps.staging.outputs.instance_ip }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            echo "=== Installing Docker ==="
+            sudo dnf update -y
+            sudo dnf install -y docker git
+            sudo systemctl enable docker
+            sudo systemctl start docker
+            sudo usermod -aG docker $USER
+
+            echo "=== Installing Docker Compose ==="
+            sudo mkdir -p /usr/local/lib/docker/cli-plugins
+            sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+            # Symlink for docker-compose command
+            sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
+
+            echo "=== Verify installations ==="
+            docker --version
+            docker-compose --version
+            git --version
+
+            echo "=== Setup project directory ==="
+            sudo mkdir -p /opt/chat-staging
+            sudo chown $USER:$USER /opt/chat-staging
+
+            echo "=== Setup complete ==="
