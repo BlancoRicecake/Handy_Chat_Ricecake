@@ -1,20 +1,12 @@
 name: CD (Staging Deployment)
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [develop]
   workflow_dispatch:
 
 jobs:
   deploy-staging:
     name: Deploy to Staging EC2
     runs-on: ubuntu-latest
-    # Only deploy if CI succeeded (skip check for manual dispatch)
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Ensure staging environment
