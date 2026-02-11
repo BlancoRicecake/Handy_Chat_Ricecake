@@ -1,15 +1,20 @@
 name: CD (Staging Deployment)
 
 on:
-  push:
-    branches:
-      - develop
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [develop]
   workflow_dispatch:
 
 jobs:
   deploy-staging:
     name: Deploy to Staging EC2
     runs-on: ubuntu-latest
+    # Only deploy if CI succeeded (skip check for manual dispatch)
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Ensure staging environment
@@ -25,7 +30,7 @@ jobs:
             # Swap 확인/생성
             if ! swapon --show | grep -q /swapfile; then
               echo "Setting up swap..."
-              sudo dd if=/dev/zero of=/swapfile bs=128M count=16
+              sudo fallocate -l 2G /swapfile
               sudo chmod 600 /swapfile
               sudo mkswap /swapfile
               sudo swapon /swapfile
