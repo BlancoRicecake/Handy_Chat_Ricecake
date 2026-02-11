@@ -4,20 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       host:
-        description: 'Staging server IP'
-        required: true
-        default: '54.180.52.81'
+        description: 'Staging server IP (leave empty to use STAGING_EC2_HOST secret)'
+        required: false
+        default: ''
 
 jobs:
   setup:
     name: Setup Staging Server via SSH
     runs-on: ubuntu-latest
+    env:
+      TARGET_HOST: ${{ github.event.inputs.host || secrets.STAGING_EC2_HOST }}
 
     steps:
       - name: Setup swap
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
@@ -35,7 +37,7 @@ jobs:
       - name: Install Docker and Git
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
@@ -51,7 +53,7 @@ jobs:
       - name: Install Docker Compose
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
@@ -78,7 +80,7 @@ jobs:
       - name: Clone repo and setup code
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
@@ -98,7 +100,7 @@ jobs:
       - name: Deploy .env.staging
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
@@ -147,7 +149,7 @@ jobs:
       - name: Build and start containers
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
@@ -167,7 +169,7 @@ jobs:
       - name: Setup complete summary
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
