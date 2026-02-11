@@ -12,46 +12,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-northeast-2
-
-      - name: Ensure Spot instance is running
-        id: ec2
-        run: |
-          INSTANCE_ID="i-07f8a701645d39293"
-          STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
-            --query 'Reservations[0].Instances[0].State.Name' --output text)
-          echo "Current state: $STATE"
-
-          if [ "$STATE" = "stopped" ]; then
-            echo "Starting instance..."
-            aws ec2 start-instances --instance-ids $INSTANCE_ID
-            echo "Waiting for instance to be running..."
-            aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-            echo "Waiting for status checks to pass..."
-            aws ec2 wait instance-status-ok --instance-ids $INSTANCE_ID
-            echo "Instance is ready"
-          elif [ "$STATE" = "running" ]; then
-            echo "Instance already running"
-          else
-            echo "Instance in unexpected state: $STATE"
-            exit 1
-          fi
-
-          # Fetch public IP dynamically
-          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
-          echo "Staging IP: $PUBLIC_IP"
-          echo "host=$PUBLIC_IP" >> $GITHUB_OUTPUT
-
       - name: Deploy to Staging via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ steps.ec2.outputs.host }}
+          host: ${{ secrets.STAGING_EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
@@ -62,12 +26,7 @@ jobs:
             chmod +x server/scripts/deploy-staging.sh
             ./server/scripts/deploy-staging.sh
 
-# Required GitHub Secrets (all pre-existing, no new secrets needed):
-#   - AWS_ACCESS_KEY_ID: AWS IAM access key (ec2:StartInstances, ec2:DescribeInstances)
-#   - AWS_SECRET_ACCESS_KEY: AWS IAM secret key
-#   - EC2_SSH_PRIVATE_KEY: SSH private key (handy-server-keypair, shared with production)
-#   - EC2_USERNAME: SSH username (ec2-user, shared with production)
-#
-# Hardcoded (not sensitive):
-#   - Instance ID: i-07f8a701645d39293
-#   - Public IP: dynamically fetched from AWS API
+# Required GitHub Secrets:
+#   - STAGING_EC2_HOST: Staging EC2 public IP (NEW - must be added)
+#   - EC2_SSH_PRIVATE_KEY: SSH private key (existing, shared with production)
+#   - EC2_USERNAME: SSH username (existing, shared with production)
