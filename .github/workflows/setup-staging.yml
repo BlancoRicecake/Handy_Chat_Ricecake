@@ -157,10 +157,18 @@ jobs:
           script_stop: true
           script: |
             cd /opt/chat-staging
+            echo "=== Stopping existing containers ==="
+            docker-compose -f docker-compose.local-staging.yml down 2>/dev/null || true
             echo "=== Building API image ==="
             docker-compose -f docker-compose.local-staging.yml build api
-            echo "=== Starting all services ==="
-            docker-compose -f docker-compose.local-staging.yml up -d
+            echo "=== Starting infra services first (mongo, redis, nginx) ==="
+            docker-compose -f docker-compose.local-staging.yml up -d mongo redis
+            sleep 5
+            echo "=== Starting API ==="
+            docker-compose -f docker-compose.local-staging.yml up -d api
+            sleep 5
+            echo "=== Starting nginx ==="
+            docker-compose -f docker-compose.local-staging.yml up -d nginx
             echo "=== Waiting for health check ==="
             sleep 15
             curl -sf http://localhost/health || echo "Health check pending..."
