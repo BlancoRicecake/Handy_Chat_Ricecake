@@ -34,12 +34,7 @@ jobs:
 
             echo "=== Fix containerd gRPC message size limit ==="
             sudo mkdir -p /etc/containerd
-            cat << 'TOML' | sudo tee /etc/containerd/config.toml
-version = 2
-[grpc]
-  max_recv_message_size = 268435456
-  max_send_message_size = 268435456
-TOML
+            printf 'version = 2\n[grpc]\n  max_recv_message_size = 268435456\n  max_send_message_size = 268435456\n' | sudo tee /etc/containerd/config.toml
             sudo systemctl restart containerd || true
             sudo systemctl restart docker
             echo "containerd gRPC limits updated"
