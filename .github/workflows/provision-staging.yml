@@ -101,6 +101,31 @@ jobs:
           echo "sg_id=$SG_ID" >> $GITHUB_OUTPUT
           echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
 
+      - name: Ensure Elastic IP
+        id: eip
+        run: |
+          # 기존 handy-staging EIP 탐색
+          EIP_ALLOC=$(aws ec2 describe-addresses \
+            --filters "Name=tag:Name,Values=handy-staging-eip" \
+            --query 'Addresses[0].AllocationId' --output text)
+
+          if [ "$EIP_ALLOC" = "None" ] || [ -z "$EIP_ALLOC" ]; then
+            echo "Allocating new Elastic IP..."
+            EIP_ALLOC=$(aws ec2 allocate-address \
+              --tag-specifications 'ResourceType=elastic-ip,Tags=[{Key=Name,Value=handy-staging-eip}]' \
+              --query 'AllocationId' --output text)
+            echo "Allocated new EIP: $EIP_ALLOC"
+          else
+            echo "Found existing EIP: $EIP_ALLOC"
+          fi
+
+          EIP_IP=$(aws ec2 describe-addresses --allocation-ids $EIP_ALLOC \
+            --query 'Addresses[0].PublicIp' --output text)
+
+          echo "Elastic IP: $EIP_IP (Allocation: $EIP_ALLOC)"
+          echo "eip_alloc=$EIP_ALLOC" >> $GITHUB_OUTPUT
+          echo "eip_ip=$EIP_IP" >> $GITHUB_OUTPUT
+
       - name: Terminate old staging instances
         run: |
           echo "=== Terminating old staging instances ==="
@@ -116,14 +141,15 @@ jobs:
             echo "No old instances to terminate"
           fi
 
-      - name: Create staging instance
+      - name: Create staging spot instance
         id: staging
         run: |
-          echo "Creating staging instance..."
+          echo "Creating staging spot instance..."
           echo "  AMI: ${{ steps.infra.outputs.ami_id }}"
           echo "  Key: ${{ steps.keypair.outputs.key_name }}"
           echo "  SG:  ${{ steps.infra.outputs.sg_id }}"
           echo "  Subnet: ${{ steps.infra.outputs.subnet_id }}"
+          echo "  EIP: ${{ steps.eip.outputs.eip_ip }} (${{ steps.eip.outputs.eip_alloc }})"
 
           INSTANCE_ID=$(aws ec2 run-instances \
             --image-id ${{ steps.infra.outputs.ami_id }} \
@@ -131,7 +157,7 @@ jobs:
             --key-name ${{ steps.keypair.outputs.key_name }} \
             --security-group-ids ${{ steps.infra.outputs.sg_id }} \
             --subnet-id ${{ steps.infra.outputs.subnet_id }} \
-            --associate-public-ip-address \
+            --instance-market-options '{"MarketType":"spot","SpotOptions":{"SpotInstanceType":"persistent","InstanceInterruptionBehavior":"stop"}}' \
             --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=handy-chat-staging}]' \
             --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}}]' \
             --query 'Instances[0].InstanceId' --output text)
@@ -145,10 +171,12 @@ jobs:
           echo "Waiting for status checks..."
           aws ec2 wait instance-status-ok --instance-ids $INSTANCE_ID
 
-          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          echo "Associating Elastic IP..."
+          aws ec2 associate-address \
+            --instance-id $INSTANCE_ID \
+            --allocation-id ${{ steps.eip.outputs.eip_alloc }}
 
-          echo "instance_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+          echo "instance_ip=${{ steps.eip.outputs.eip_ip }}" >> $GITHUB_OUTPUT
 
       - name: Print staging instance info
         run: |
@@ -156,18 +184,21 @@ jobs:
           echo "  STAGING INSTANCE CREATED SUCCESSFULLY"
           echo "============================================"
           echo ""
-          echo "  Instance ID: ${{ steps.staging.outputs.instance_id }}"
-          echo "  Public IP:   ${{ steps.staging.outputs.instance_ip }}"
+          echo "  Instance ID:  ${{ steps.staging.outputs.instance_id }}"
+          echo "  Elastic IP:   ${{ steps.staging.outputs.instance_ip }}"
+          echo "  EIP Alloc ID: ${{ steps.eip.outputs.eip_alloc }}"
+          echo "  Type:         Spot (persistent, stop on interrupt)"
           echo ""
           echo "  Next steps:"
           echo "  1. Add GitHub Secret: STAGING_EC2_HOST = ${{ steps.staging.outputs.instance_ip }}"
-          echo "  2. Run CD workflow to deploy"
+          echo "  2. Run setup-staging workflow to install dependencies"
+          echo "  3. Run CD workflow to deploy"
           echo "============================================"
 
       - name: Setup staging server
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ steps.staging.outputs.instance_ip }}
+          host: ${{ steps.eip.outputs.eip_ip }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
