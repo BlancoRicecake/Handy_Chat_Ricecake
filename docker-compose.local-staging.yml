@@ -75,7 +75,7 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 1G
+          memory: 512M
 
   # MongoDB database
   mongo:
@@ -103,7 +103,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
+          memory: 384M
     command: mongod --quiet --logpath /dev/null
 
   # Redis cache
@@ -131,38 +131,6 @@ services:
           cpus: '0.25'
           memory: 256M
 
-  # MinIO S3-compatible storage
-  minio:
-    image: minio/minio:latest
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
-    volumes:
-      - minio-data:/data
-    networks:
-      - app-network
-    command: server /data --console-address ":9001"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 256M
-
 networks:
   app-network:
     driver: bridge
@@ -174,4 +142,3 @@ volumes:
   mongo-data:
   mongo-config:
   redis-data:
-  minio-data:
