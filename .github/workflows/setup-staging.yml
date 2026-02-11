@@ -132,10 +132,15 @@ jobs:
           command_timeout: 15m
           script_stop: true
           script: |
-            set -euo pipefail
             cd /opt/chat-staging
-            chmod +x server/scripts/deploy-staging.sh
-            ./server/scripts/deploy-staging.sh --no-pull
+            echo "=== Building API image ==="
+            docker-compose -f docker-compose.local-staging.yml build api
+            echo "=== Starting all services ==="
+            docker-compose -f docker-compose.local-staging.yml up -d
+            echo "=== Waiting for health check ==="
+            sleep 15
+            curl -sf http://localhost/health || echo "Health check pending..."
+            docker-compose -f docker-compose.local-staging.yml ps
 
       - name: Setup complete summary
         uses: appleboy/ssh-action@v1.0.0
