@@ -92,7 +92,7 @@ check_prerequisites() {
     fi
 
     # Check Docker Compose
-    if ! command -v docker-compose &> /dev/null; then
+    if ! docker compose version &> /dev/null; then
         log_error "Docker Compose is not installed"
         exit 1
     fi
@@ -188,11 +188,11 @@ deploy_application() {
 
     # Pull latest images (for base images like mongo, redis)
     log_info "Pulling base images..."
-    docker-compose -f "$COMPOSE_FILE" pull mongo redis || true
+    docker compose -f "$COMPOSE_FILE" pull mongo redis || true
 
     # Build and restart services
     log_info "Building and restarting services..."
-    if docker-compose -f "$COMPOSE_FILE" up -d --build; then
+    if docker compose -f "$COMPOSE_FILE" up -d --build; then
         log_success "Services deployed successfully"
     else
         log_error "Deployment failed"
@@ -212,12 +212,12 @@ verify_deployment() {
     log_info "Verifying deployment..."
 
     # Check if containers are running
-    local running=$(docker-compose -f "$COMPOSE_FILE" ps -q | wc -l)
+    local running=$(docker compose -f "$COMPOSE_FILE" ps -q | wc -l)
     local expected=4  # caddy, api, mongo, redis
 
     if [ "$running" -lt "$expected" ]; then
         log_error "Not all containers are running ($running/$expected)"
-        docker-compose -f "$COMPOSE_FILE" ps
+        docker compose -f "$COMPOSE_FILE" ps
         exit 1
     fi
 
@@ -241,7 +241,7 @@ verify_deployment() {
 
     if [ "$health_ok" = false ]; then
         log_error "Health check failed after ${max_attempts} attempts"
-        log_error "Check logs: docker-compose -f $COMPOSE_FILE logs api"
+        log_error "Check logs: docker compose -f $COMPOSE_FILE logs api"
         exit 1
     fi
 
@@ -257,7 +257,7 @@ show_status() {
 
     echo ""
     echo "Container Status:"
-    docker-compose -f "$COMPOSE_FILE" ps
+    docker compose -f "$COMPOSE_FILE" ps
 
     echo ""
     echo "Resource Usage:"
@@ -265,7 +265,7 @@ show_status() {
 
     echo ""
     echo "Recent Logs (last 10 lines):"
-    docker-compose -f "$COMPOSE_FILE" logs --tail=10 api
+    docker compose -f "$COMPOSE_FILE" logs --tail=10 api
 }
 
 ###############################################################################
@@ -327,7 +327,7 @@ main() {
     log_success "Staging Deployment Completed Successfully!"
     log_success "========================================="
     log_info ""
-    log_info "Check logs: docker-compose -f $COMPOSE_FILE logs -f"
+    log_info "Check logs: docker compose -f $COMPOSE_FILE logs -f"
     log_info "Monitor resources: docker stats"
     log_info ""
 }
