@@ -1,0 +1,31 @@
+name: CD (Staging Deployment)
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Staging via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            cd /opt/chat-staging
+            chmod +x server/scripts/deploy-staging.sh
+            ./server/scripts/deploy-staging.sh
+
+# Required GitHub Secrets:
+#   - STAGING_EC2_HOST: Staging EC2 public IP (must be added)
+#   - EC2_SSH_PRIVATE_KEY: SSH private key (existing, shared with production)

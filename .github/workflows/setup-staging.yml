@@ -1,0 +1,52 @@
+name: Setup Staging Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: 'Staging server IP'
+        required: true
+        default: '3.35.224.88'
+
+jobs:
+  setup:
+    name: Setup Staging Server via SSH
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup staging server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.host }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            echo "=== Installing Docker ==="
+            sudo dnf update -y
+            sudo dnf install -y docker git
+            sudo systemctl enable docker
+            sudo systemctl start docker
+            sudo usermod -aG docker $USER
+
+            echo "=== Installing Docker Compose ==="
+            sudo mkdir -p /usr/local/lib/docker/cli-plugins
+            sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+            sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
+
+            echo "=== Verify installations ==="
+            docker --version
+            docker-compose --version
+            git --version
+
+            echo "=== Setup project directory ==="
+            sudo mkdir -p /opt/chat-staging
+            sudo chown $USER:$USER /opt/chat-staging
+
+            echo "=== Setup complete ==="
