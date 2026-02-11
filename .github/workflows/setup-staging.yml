@@ -29,6 +29,8 @@ jobs:
             echo "=== Stop all containers (break OOM restart loops) ==="
             docker stop $(docker ps -aq) 2>/dev/null || true
             docker rm $(docker ps -aq) 2>/dev/null || true
+            echo "=== Prune Docker resources ==="
+            docker system prune -af --volumes 2>/dev/null || true
 
             echo "=== Setup swap (2GB) ==="
             free -h
