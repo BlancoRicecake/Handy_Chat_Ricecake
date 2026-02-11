@@ -101,6 +101,21 @@ jobs:
           echo "sg_id=$SG_ID" >> $GITHUB_OUTPUT
           echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
 
+      - name: Terminate old staging instances
+        run: |
+          echo "=== Terminating old staging instances ==="
+          OLD_IDS=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=handy-chat-staging" "Name=instance-state-name,Values=running,stopped,stopping" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          if [ -n "$OLD_IDS" ] && [ "$OLD_IDS" != "None" ]; then
+            echo "Terminating: $OLD_IDS"
+            aws ec2 terminate-instances --instance-ids $OLD_IDS
+            aws ec2 wait instance-terminated --instance-ids $OLD_IDS
+            echo "Old instances terminated"
+          else
+            echo "No old instances to terminate"
+          fi
+
       - name: Create staging instance
         id: staging
         run: |
@@ -153,37 +168,28 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ steps.staging.outputs.instance_ip }}
-          username: ${{ secrets.EC2_USERNAME }}
+          username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
           command_timeout: 10m
           script_stop: true
           script: |
-            set -euo pipefail
-
-            echo "=== Installing Docker ==="
-            sudo dnf update -y
+            echo "=== Installing Docker and Git ==="
             sudo dnf install -y docker git
             sudo systemctl enable docker
             sudo systemctl start docker
             sudo usermod -aG docker $USER
-
             echo "=== Installing Docker Compose ==="
             sudo mkdir -p /usr/local/lib/docker/cli-plugins
             sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
               -o /usr/local/lib/docker/cli-plugins/docker-compose
             sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-
-            # Symlink for docker-compose command
             sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-
             echo "=== Verify installations ==="
             docker --version
             docker-compose --version
             git --version
-
             echo "=== Setup project directory ==="
             sudo mkdir -p /opt/chat-staging
-            sudo chown $USER:$USER /opt/chat-staging
-
+            sudo chown ec2-user:ec2-user /opt/chat-staging
             echo "=== Setup complete ==="
