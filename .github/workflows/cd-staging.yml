@@ -22,7 +22,7 @@ jobs:
             # Swap 확인/생성
             if ! swapon --show | grep -q /swapfile; then
               echo "Setting up swap..."
-              sudo fallocate -l 2G /swapfile
+              sudo dd if=/dev/zero of=/swapfile bs=128M count=16
               sudo chmod 600 /swapfile
               sudo mkswap /swapfile
               sudo swapon /swapfile
