@@ -13,13 +13,12 @@ jobs:
 
     steps:
       - name: Ensure .env.mvp exists
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
-          script_stop: true
           script: |
             if [ -f /opt/chat-app/.env.mvp ]; then
               echo ".env.mvp already exists, skipping creation"
@@ -52,13 +51,12 @@ jobs:
             fi
 
       - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
-          script_stop: true
           script: |
             cd /opt/chat-app
             chmod +x server/scripts/deploy-mvp.sh
