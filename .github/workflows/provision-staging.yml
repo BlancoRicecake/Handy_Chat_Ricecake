@@ -101,14 +101,55 @@ jobs:
           echo "sg_id=$SG_ID" >> $GITHUB_OUTPUT
           echo "ami_id=$AMI_ID" >> $GITHUB_OUTPUT
 
-      - name: Create staging instance
+      - name: Ensure Elastic IP
+        id: eip
+        run: |
+          # 기존 handy-staging EIP 탐색
+          EIP_ALLOC=$(aws ec2 describe-addresses \
+            --filters "Name=tag:Name,Values=handy-staging-eip" \
+            --query 'Addresses[0].AllocationId' --output text)
+
+          if [ "$EIP_ALLOC" = "None" ] || [ -z "$EIP_ALLOC" ]; then
+            echo "Allocating new Elastic IP..."
+            EIP_ALLOC=$(aws ec2 allocate-address \
+              --tag-specifications 'ResourceType=elastic-ip,Tags=[{Key=Name,Value=handy-staging-eip}]' \
+              --query 'AllocationId' --output text)
+            echo "Allocated new EIP: $EIP_ALLOC"
+          else
+            echo "Found existing EIP: $EIP_ALLOC"
+          fi
+
+          EIP_IP=$(aws ec2 describe-addresses --allocation-ids $EIP_ALLOC \
+            --query 'Addresses[0].PublicIp' --output text)
+
+          echo "Elastic IP: $EIP_IP (Allocation: $EIP_ALLOC)"
+          echo "eip_alloc=$EIP_ALLOC" >> $GITHUB_OUTPUT
+          echo "eip_ip=$EIP_IP" >> $GITHUB_OUTPUT
+
+      - name: Terminate old staging instances
+        run: |
+          echo "=== Terminating old staging instances ==="
+          OLD_IDS=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=handy-chat-staging" "Name=instance-state-name,Values=running,stopped,stopping" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          if [ -n "$OLD_IDS" ] && [ "$OLD_IDS" != "None" ]; then
+            echo "Terminating: $OLD_IDS"
+            aws ec2 terminate-instances --instance-ids $OLD_IDS
+            aws ec2 wait instance-terminated --instance-ids $OLD_IDS
+            echo "Old instances terminated"
+          else
+            echo "No old instances to terminate"
+          fi
+
+      - name: Create staging spot instance
         id: staging
         run: |
-          echo "Creating staging instance..."
+          echo "Creating staging spot instance..."
           echo "  AMI: ${{ steps.infra.outputs.ami_id }}"
           echo "  Key: ${{ steps.keypair.outputs.key_name }}"
           echo "  SG:  ${{ steps.infra.outputs.sg_id }}"
           echo "  Subnet: ${{ steps.infra.outputs.subnet_id }}"
+          echo "  EIP: ${{ steps.eip.outputs.eip_ip }} (${{ steps.eip.outputs.eip_alloc }})"
 
           INSTANCE_ID=$(aws ec2 run-instances \
             --image-id ${{ steps.infra.outputs.ami_id }} \
@@ -116,7 +157,7 @@ jobs:
             --key-name ${{ steps.keypair.outputs.key_name }} \
             --security-group-ids ${{ steps.infra.outputs.sg_id }} \
             --subnet-id ${{ steps.infra.outputs.subnet_id }} \
-            --associate-public-ip-address \
+            --instance-market-options '{"MarketType":"spot","SpotOptions":{"SpotInstanceType":"persistent","InstanceInterruptionBehavior":"stop"}}' \
             --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=handy-chat-staging}]' \
             --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}}]' \
             --query 'Instances[0].InstanceId' --output text)
@@ -130,10 +171,12 @@ jobs:
           echo "Waiting for status checks..."
           aws ec2 wait instance-status-ok --instance-ids $INSTANCE_ID
 
-          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          echo "Associating Elastic IP..."
+          aws ec2 associate-address \
+            --instance-id $INSTANCE_ID \
+            --allocation-id ${{ steps.eip.outputs.eip_alloc }}
 
-          echo "instance_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+          echo "instance_ip=${{ steps.eip.outputs.eip_ip }}" >> $GITHUB_OUTPUT
 
       - name: Print staging instance info
         run: |
@@ -141,49 +184,53 @@ jobs:
           echo "  STAGING INSTANCE CREATED SUCCESSFULLY"
           echo "============================================"
           echo ""
-          echo "  Instance ID: ${{ steps.staging.outputs.instance_id }}"
-          echo "  Public IP:   ${{ steps.staging.outputs.instance_ip }}"
+          echo "  Instance ID:  ${{ steps.staging.outputs.instance_id }}"
+          echo "  Elastic IP:   ${{ steps.staging.outputs.instance_ip }}"
+          echo "  EIP Alloc ID: ${{ steps.eip.outputs.eip_alloc }}"
+          echo "  Type:         Spot (persistent, stop on interrupt)"
           echo ""
           echo "  Next steps:"
           echo "  1. Add GitHub Secret: STAGING_EC2_HOST = ${{ steps.staging.outputs.instance_ip }}"
-          echo "  2. Run CD workflow to deploy"
+          echo "  2. Run setup-staging workflow to install dependencies"
+          echo "  3. Run CD workflow to deploy"
           echo "============================================"
 
       - name: Setup staging server
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ steps.staging.outputs.instance_ip }}
-          username: ${{ secrets.EC2_USERNAME }}
+          host: ${{ steps.eip.outputs.eip_ip }}
+          username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
           command_timeout: 10m
           script_stop: true
           script: |
-            set -euo pipefail
-
-            echo "=== Installing Docker ==="
-            sudo dnf update -y
+            echo "=== Installing Docker and Git ==="
             sudo dnf install -y docker git
             sudo systemctl enable docker
             sudo systemctl start docker
             sudo usermod -aG docker $USER
-
-            echo "=== Installing Docker Compose ==="
+            echo "=== Fix containerd gRPC message size limit ==="
+            sudo mkdir -p /etc/containerd
+            printf 'version = 3\n\n[grpc]\n  max_recv_message_size = 268435456\n  max_send_message_size = 268435456\n' | sudo tee /etc/containerd/config.toml
+            sudo systemctl restart containerd || true
+            sudo systemctl restart docker
+            echo "=== Installing Docker Buildx ==="
             sudo mkdir -p /usr/local/lib/docker/cli-plugins
+            BUILDX_VERSION=0.19.3
+            sudo curl -SL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-arm64" \
+              -o /usr/local/lib/docker/cli-plugins/docker-buildx
+            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+            echo "=== Installing Docker Compose ==="
             sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
               -o /usr/local/lib/docker/cli-plugins/docker-compose
             sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-
-            # Symlink for docker-compose command
-            sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-
             echo "=== Verify installations ==="
             docker --version
-            docker-compose --version
+            docker buildx version
+            docker compose version
             git --version
-
             echo "=== Setup project directory ==="
             sudo mkdir -p /opt/chat-staging
-            sudo chown $USER:$USER /opt/chat-staging
-
+            sudo chown ec2-user:ec2-user /opt/chat-staging
             echo "=== Setup complete ==="

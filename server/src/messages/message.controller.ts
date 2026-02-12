@@ -19,6 +19,7 @@ interface AuthenticatedRequest extends Request {
     id?: string;
     userId?: string;
     username?: string;
+    avatar?: string;
   };
 }
 

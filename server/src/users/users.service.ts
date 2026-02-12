@@ -14,6 +14,7 @@ export class UsersService {
   async findOrCreateByMainServerId(
     mainServerId: string,
     username: string,
+    avatar?: string,
   ): Promise<User> {
     let user = await this.userModel.findOne({ mainServerId });
 
@@ -22,11 +23,21 @@ export class UsersService {
       user = await this.userModel.create({
         mainServerId,
         username,
+        avatar,
       });
-    } else if (user.username !== username) {
-      // username 변경 감지 시 업데이트
-      user.username = username;
-      await user.save();
+    } else {
+      let dirty = false;
+      if (user.username !== username) {
+        user.username = username;
+        dirty = true;
+      }
+      if (avatar !== undefined && user.avatar !== avatar) {
+        user.avatar = avatar;
+        dirty = true;
+      }
+      if (dirty) {
+        await user.save();
+      }
     }
 
     return user;
@@ -45,16 +56,22 @@ export class UsersService {
    */
   async findByMainServerIds(
     mainServerIds: string[],
-  ): Promise<Map<string, { mainServerId: string; username: string }>> {
+  ): Promise<
+    Map<string, { mainServerId: string; username: string; avatar?: string }>
+  > {
     const users = await this.userModel
       .find({ mainServerId: { $in: mainServerIds } })
-      .select('mainServerId username')
+      .select('mainServerId username avatar')
       .lean();
 
     return new Map(
       users.map((u) => [
         u.mainServerId,
-        { mainServerId: u.mainServerId, username: u.username },
+        {
+          mainServerId: u.mainServerId,
+          username: u.username,
+          avatar: u.avatar,
+        },
       ]),
     );
   }

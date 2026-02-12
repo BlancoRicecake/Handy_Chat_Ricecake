@@ -6,6 +6,8 @@ server/node_modules/
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.*.example
 
 # Build outputs
 dist/

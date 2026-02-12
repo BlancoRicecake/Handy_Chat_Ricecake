@@ -12,6 +12,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Ensure .env.mvp exists
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            if [ -f /opt/chat-app/.env.mvp ]; then
+              echo ".env.mvp already exists, skipping creation"
+            else
+              echo ".env.mvp not found, creating from secrets..."
+              cat > /opt/chat-app/.env.mvp << 'ENVEOF'
+            NODE_ENV=production
+            PORT=3000
+            HOST=0.0.0.0
+            TRUST_PROXY=1
+            MONGO_URI=mongodb://mongo:27017/chatdb
+            REDIS_URL=redis://redis:6379/0
+            JWT_SECRET_CURRENT=${{ secrets.PRODUCTION_JWT_SECRET }}
+            JWT_SECRET_PREVIOUS=
+            ACCESS_TOKEN_EXPIRY=7d
+            REFRESH_TOKEN_EXPIRY=7d
+            JWT_CLOCK_TOLERANCE=60
+            USE_ROTATED_JWT=false
+            ENABLE_REFRESH_TOKEN=false
+            ENFORCE_SINGLE_SESSION=false
+            USE_AWS_SECRETS=false
+            SECRET_CACHE_TTL=300000
+            AWS_SECRETS_FAIL_OPEN=false
+            CORS_ORIGIN=http://16.176.147.141,http://localhost:3000,http://localhost:3001,http://localhost:3002,http://192.168.45.86:3001,http://192.168.45.57:3001,http://192.168.45.57:3002,http://192.168.45.130:3001,http://192.168.45.130:3002,http://172.30.1.47:3001,http://172.30.1.47:3002,http://172.30.1.88:3001,http://172.30.1.88:3002,https://stage-handy.com,http://stage-handy.com,https://www.stage-handy.com,http://www.stage-handy.com,https://h-andy.com,https://www.h-andy.com,https://api.h-andy.com
+            LOG_LEVEL=info
+            USE_S3=false
+            ENVEOF
+              sed -i 's/^            //' /opt/chat-app/.env.mvp
+              echo ".env.mvp created successfully"
+            fi
+
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -29,3 +68,4 @@ jobs:
 #   - EC2_HOST: EC2 public IP address
 #   - EC2_USERNAME: SSH username (e.g., ubuntu)
 #   - EC2_SSH_PRIVATE_KEY: SSH private key for EC2 access
+#   - PRODUCTION_JWT_SECRET: JWT secret for production (synced with handy-platform)

@@ -18,12 +18,9 @@
 }
 
 # Main server block
-# For local development: localhost
-# For production: replace with your domain (e.g., yourdomain.com)
-:80, :443 {
-	# Automatic HTTPS
-	# In production with a real domain, Caddy will automatically obtain Let's Encrypt certificates
-	# For local development without a domain, Caddy will use self-signed certificates
+# Staging: chat.stage-handy.com (Caddy auto-provisions Let's Encrypt TLS)
+# For local development, use: localhost or :80, :443
+chat.stage-handy.com {
 
 	# Security headers (Caddy adds many by default)
 	header {

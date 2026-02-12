@@ -20,6 +20,11 @@ export interface JwtPayload {
   username?: string;
 
   /**
+   * Avatar URL (optional)
+   */
+  avatar?: string;
+
+  /**
    * Issued at timestamp (Unix seconds)
    */
   iat?: number;

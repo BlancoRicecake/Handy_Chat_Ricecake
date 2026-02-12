@@ -4,88 +4,87 @@ on:
   workflow_dispatch:
     inputs:
       host:
-        description: 'Staging server IP'
-        required: true
-        default: '3.35.224.88'
+        description: 'Staging server IP (leave empty to use STAGING_EC2_HOST secret)'
+        required: false
+        default: ''
 
 jobs:
   setup:
     name: Setup Staging Server via SSH
     runs-on: ubuntu-latest
+    env:
+      TARGET_HOST: ${{ github.event.inputs.host || secrets.STAGING_EC2_HOST }}
 
     steps:
-      - name: Install dependencies and Docker
+      - name: Cleanup, swap, and verify Docker
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: 22
-          command_timeout: 10m
-          script_stop: true
-          script: |
-            set -euo pipefail
-
-            echo "=== Installing Docker ==="
-            sudo dnf update -y
-            sudo dnf install -y docker git
-            sudo systemctl enable docker
-            sudo systemctl start docker
-            sudo usermod -aG docker $USER
-
-            echo "=== Installing Docker Compose ==="
-            sudo mkdir -p /usr/local/lib/docker/cli-plugins
-            sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
-              -o /usr/local/lib/docker/cli-plugins/docker-compose
-            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-            sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-
-            echo "=== Verify installations ==="
-            docker --version
-            docker-compose --version
-            git --version
-
-      - name: Clone repo and setup code
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ github.event.inputs.host }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: 22
-          command_timeout: 10m
-          script_stop: true
-          script: |
-            set -euo pipefail
-
-            echo "=== Setup project directory ==="
-            sudo mkdir -p /opt/chat-staging
-            sudo chown ec2-user:ec2-user /opt/chat-staging
-
-            echo "=== Clone repository ==="
-            if [ -d "/opt/chat-staging/.git" ]; then
-              echo "Repo already cloned, pulling latest..."
-              cd /opt/chat-staging
-              git pull origin develop
-            else
-              git clone -b develop https://github.com/BlancoRicecake/Handy_Chat_Ricecake.git /opt/chat-staging
-            fi
-
-            echo "=== Verify code ==="
-            ls -la /opt/chat-staging/
-            echo "Branch: $(cd /opt/chat-staging && git branch --show-current)"
-
-      - name: Deploy .env.staging
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
           command_timeout: 5m
           script_stop: true
-          envs: STAGING_ENV_CONTENT
           script: |
-            set -euo pipefail
+            echo "=== Stop all containers (break OOM restart loops) ==="
+            docker stop $(docker ps -aq) 2>/dev/null || true
+            docker rm $(docker ps -aq) 2>/dev/null || true
+            echo "=== Prune Docker resources ==="
+            docker system prune -af --volumes 2>/dev/null || true
+
+            echo "=== Fix containerd gRPC message size limit ==="
+            sudo mkdir -p /etc/containerd
+            printf 'version = 3\n\n[grpc]\n  max_recv_message_size = 268435456\n  max_send_message_size = 268435456\n' | sudo tee /etc/containerd/config.toml
+            sudo systemctl restart containerd || true
+            sudo systemctl restart docker
+            echo "containerd gRPC limits updated"
+
+            echo "=== Setup swap (2GB) ==="
+            free -h
+            df -h /
+            if swapon --show | grep -q /swapfile; then
+              echo "Swap already active"
+            else
+              echo "Creating swap file with dd..."
+              sudo dd if=/dev/zero of=/swapfile bs=128M count=16 2>&1 || { echo "dd failed with exit $?"; exit 1; }
+              echo "Setting swap permissions..."
+              sudo chmod 600 /swapfile
+              echo "Running mkswap..."
+              sudo mkswap /swapfile
+              echo "Running swapon..."
+              sudo swapon /swapfile
+              echo "Swap created successfully"
+            fi
+            echo "vm.swappiness=10" | sudo tee /etc/sysctl.d/99-swappiness.conf
+            sudo sysctl vm.swappiness=10
+            free -h
+
+            echo "=== Verify Docker and Compose ==="
+            docker --version || { echo "ERROR: Docker not installed"; exit 1; }
+            docker buildx version || { echo "ERROR: Buildx not installed"; exit 1; }
+            docker compose version || { echo "ERROR: Docker Compose not installed"; exit 1; }
+            git --version || { echo "ERROR: Git not installed"; exit 1; }
+
+      - name: Clone repo and write .env.staging
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.TARGET_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            echo "=== Setup project directory ==="
+            sudo rm -rf /opt/chat-staging
+            sudo mkdir -p /opt/chat-staging
+            sudo chown ec2-user:ec2-user /opt/chat-staging
+
+            echo "=== Clone repository ==="
+            git clone -b develop https://github.com/BlancoRicecake/Handy_Chat_Ricecake.git /opt/chat-staging
+            cd /opt/chat-staging && git branch --show-current
+            ls -la
+
             echo "=== Writing .env.staging ==="
             cat > /opt/chat-staging/.env.staging << 'ENVEOF'
             NODE_ENV=staging
@@ -108,12 +107,6 @@ jobs:
             CORS_ORIGIN=http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:8080,https://localhost:8443,https://stage-handy.com,https://www.stage-handy.com,https://h-andy.com,https://www.h-andy.com
             LOG_LEVEL=debug
             USE_S3=false
-            S3_ENDPOINT=http://minio:9000
-            S3_BUCKET_NAME=chat-files
-            S3_ACCESS_KEY=minioadmin
-            S3_SECRET_KEY=minioadmin
-            S3_REGION=us-east-1
-            S3_USE_PATH_STYLE=true
             CHAT_SERVER_URL=http://localhost:3000
             ENVEOF
 
@@ -123,23 +116,67 @@ jobs:
             echo "=== .env.staging created ==="
             wc -l /opt/chat-staging/.env.staging
 
-      - name: Setup complete summary
+      - name: Build and start containers
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ github.event.inputs.host }}
+          host: ${{ env.TARGET_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
-          command_timeout: 5m
+          command_timeout: 15m
+          script_stop: true
           script: |
+            cd /opt/chat-staging
+
+            echo "=== Building API and Caddy images ==="
+            docker compose -f docker-compose.local-staging.yml build api caddy
+
+            echo "=== Starting infra services (mongo, redis) ==="
+            docker compose -f docker-compose.local-staging.yml up -d mongo redis
+
+            echo "=== Waiting for mongo/redis healthcheck ==="
+            for i in $(seq 1 30); do
+              MONGO_OK=$(docker inspect --format='{{.State.Health.Status}}' chat-staging-mongo-1 2>/dev/null || echo "starting")
+              REDIS_OK=$(docker inspect --format='{{.State.Health.Status}}' chat-staging-redis-1 2>/dev/null || echo "starting")
+              echo "  [$i] mongo=$MONGO_OK redis=$REDIS_OK"
+              if [ "$MONGO_OK" = "healthy" ] && [ "$REDIS_OK" = "healthy" ]; then break; fi
+              sleep 5
+            done
+
+            echo "=== Starting API (--no-deps to skip re-checking mongo/redis) ==="
+            docker compose -f docker-compose.local-staging.yml up -d --no-deps api
+
+            echo "=== Starting Caddy ==="
+            docker compose -f docker-compose.local-staging.yml up -d --no-deps caddy
+
+            echo "=== Waiting for health check ==="
+            HEALTH_OK=false
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost/health; then
+                echo " Health OK"
+                HEALTH_OK=true
+                break
+              fi
+              echo "  [$i] waiting..."
+              sleep 10
+            done
+
             echo "============================================"
             echo "  STAGING SERVER SETUP COMPLETE"
             echo "============================================"
-            echo "  Code: /opt/chat-staging (branch: $(cd /opt/chat-staging && git branch --show-current))"
+            echo "  Code: /opt/chat-staging (branch: $(git branch --show-current))"
             echo "  Env:  /opt/chat-staging/.env.staging"
             echo "  Docker: $(docker --version)"
-            echo "  Compose: $(docker-compose --version)"
+            echo "  Compose: $(docker compose version)"
             echo "============================================"
+            docker compose -f docker-compose.local-staging.yml ps
+            echo "============================================"
+            if [ "$HEALTH_OK" = "true" ]; then
+              echo "  Health: OK"
+            else
+              echo "  Health: WARN - not responding yet, check logs"
+              docker compose -f docker-compose.local-staging.yml logs --tail=20 api
+            fi
 
 # Required GitHub Secrets:
 #   - EC2_SSH_PRIVATE_KEY: SSH private key

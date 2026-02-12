@@ -44,12 +44,14 @@ export class JwtGuard implements CanActivate {
       const user = await this.usersService.findOrCreateByMainServerId(
         payload.id,
         payload.username || payload.id,
+        payload.avatar,
       );
 
       // request.user에 mainServerId를 id로 설정 (기존 코드 호환)
       request.user = {
         id: user.mainServerId,
         username: user.username,
+        avatar: user.avatar,
       };
 
       return true;
