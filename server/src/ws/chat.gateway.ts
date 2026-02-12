@@ -247,12 +247,10 @@ export class ChatGateway
     if (!userId || !roomId) return;
 
     await this.readReceiptService.markAsRead(roomId, userId);
-    client
-      .to(roomId)
-      .emit('message:read', {
-        roomId,
-        userId,
-        readAt: new Date().toISOString(),
-      });
+    client.to(roomId).emit('message:read', {
+      roomId,
+      userId,
+      readAt: new Date().toISOString(),
+    });
   }
 }
