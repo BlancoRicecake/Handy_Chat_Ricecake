@@ -147,7 +147,6 @@ jobs:
           key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
           port: 22
           command_timeout: 3m
-          script_stop: true
           script: |
             # Swap 확인/생성
             if ! swapon --show | grep -q /swapfile; then
@@ -175,7 +174,6 @@ jobs:
           key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
           port: 22
           command_timeout: 15m
-          script_stop: true
           script: |
             cd /opt/chat-staging
             chmod +x server/scripts/deploy-staging.sh
