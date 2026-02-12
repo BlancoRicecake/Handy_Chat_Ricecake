@@ -14,6 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from '../messages/messages.service';
 import { AuthService } from '../auth/auth.service';
 import { UsersService } from '../users/users.service';
+import { ReadReceiptService } from '../rooms/read-receipt.service';
 import { MessageType } from '../messages/message.types';
 
 @WebSocketGateway({
@@ -45,6 +46,7 @@ export class ChatGateway
     private readonly messages: MessagesService,
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
+    private readonly readReceiptService: ReadReceiptService,
   ) {}
 
   afterInit(server: Server) {
@@ -234,5 +236,23 @@ export class ChatGateway
         clientMessageId: payload.clientMessageId,
       });
     }
+  }
+
+  @SubscribeMessage('message:read')
+  async onMessageRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() { roomId }: { roomId: string },
+  ) {
+    const userId = this.online.get(client.id);
+    if (!userId || !roomId) return;
+
+    await this.readReceiptService.markAsRead(roomId, userId);
+    client
+      .to(roomId)
+      .emit('message:read', {
+        roomId,
+        userId,
+        readAt: new Date().toISOString(),
+      });
   }
 }

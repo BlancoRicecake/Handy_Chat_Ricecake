@@ -93,6 +93,19 @@ export class RoomsController {
   ) {
     const userId = req.user.id;
     await this.readReceiptService.markAsRead(roomId, userId, body.messageId);
-    return { success: true };
+
+    // 파트너의 마지막 읽음 시간 조회
+    const room = await this.rooms.findById(roomId);
+    const partnerId = room?.userIds?.find((id: string) => id !== userId);
+    let partnerLastReadAt: string | null = null;
+    if (partnerId) {
+      const partnerReadAt = await this.readReceiptService.getLastReadAt(
+        roomId,
+        partnerId,
+      );
+      partnerLastReadAt = partnerReadAt?.toISOString() ?? null;
+    }
+
+    return { success: true, partnerLastReadAt };
   }
 }

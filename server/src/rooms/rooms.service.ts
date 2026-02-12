@@ -40,6 +40,10 @@ export class RoomsService {
     private readonly messagesService: MessagesService,
   ) {}
 
+  async findById(roomId: string): Promise<Room | null> {
+    return this.roomModel.findById(roomId).lean() as Promise<Room | null>;
+  }
+
   async getOrCreateOneToOne(userA: string, userB: string) {
     const pair = [userA, userB].sort();
     const found = await this.roomModel.findOne({ userIds: pair }).lean();
