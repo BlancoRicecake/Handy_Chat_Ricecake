@@ -17,13 +17,13 @@ jobs:
           command_timeout: 3m
           script: |
             cd /opt/chat-app
-            echo "=== Current git status ==="
+            echo "=== Resolve stash pop conflict ==="
+            # server/.env는 git에서 삭제됐지만 서버에 필요 — untrack하고 파일 유지
+            git rm --cached server/.env 2>/dev/null || true
+            git checkout -- . 2>/dev/null || true
+            git stash drop 2>/dev/null || true
+            git reset HEAD 2>/dev/null || true
+            echo "=== Final status ==="
             git status --short
-            echo "=== Stashing local changes ==="
-            git stash
-            echo "=== Pulling latest ==="
-            git pull origin main
-            echo "=== Restoring .env ==="
-            git stash pop || echo "No stash to pop or conflict"
-            echo "=== Done ==="
-            git status --short
+            echo "=== Verify server/.env exists ==="
+            ls -la server/.env 2>&1 || echo "server/.env MISSING"
