@@ -51,6 +51,7 @@ export class JwtGuard implements CanActivate {
       request.user = {
         id: user.mainServerId,
         username: user.username,
+        avatar: user.avatar,
       };
 
       return true;
