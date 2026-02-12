@@ -117,7 +117,11 @@ export class RoomsService {
       return {
         roomId,
         partner: partner
-          ? { id: partner.mainServerId, username: partner.username, avatar: partner.avatar }
+          ? {
+              id: partner.mainServerId,
+              username: partner.username,
+              avatar: partner.avatar,
+            }
           : { id: partnerId, username: 'Unknown User' },
         lastMessage: lastMessage
           ? {

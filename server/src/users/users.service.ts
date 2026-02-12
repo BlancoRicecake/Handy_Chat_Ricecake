@@ -56,7 +56,9 @@ export class UsersService {
    */
   async findByMainServerIds(
     mainServerIds: string[],
-  ): Promise<Map<string, { mainServerId: string; username: string; avatar?: string }>> {
+  ): Promise<
+    Map<string, { mainServerId: string; username: string; avatar?: string }>
+  > {
     const users = await this.userModel
       .find({ mainServerId: { $in: mainServerIds } })
       .select('mainServerId username avatar')
@@ -65,7 +67,11 @@ export class UsersService {
     return new Map(
       users.map((u) => [
         u.mainServerId,
-        { mainServerId: u.mainServerId, username: u.username, avatar: u.avatar },
+        {
+          mainServerId: u.mainServerId,
+          username: u.username,
+          avatar: u.avatar,
+        },
       ]),
     );
   }
