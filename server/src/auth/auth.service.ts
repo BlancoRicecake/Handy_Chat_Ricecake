@@ -18,11 +18,12 @@ export class AuthService {
    */
   async validateToken(
     token: string,
-  ): Promise<{ userId: string; username?: string }> {
+  ): Promise<{ userId: string; username?: string; avatar?: string }> {
     const payload = await this.jwtService.verifyAccessToken(token);
     return {
       userId: payload.id,
       username: payload.username,
+      avatar: payload.avatar,
     };
   }
 }

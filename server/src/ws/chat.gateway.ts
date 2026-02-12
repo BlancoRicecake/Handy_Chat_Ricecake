@@ -69,6 +69,7 @@ export class ChatGateway
       await this.usersService.findOrCreateByMainServerId(
         payload.userId,
         payload.username || payload.userId,
+        payload.avatar,
       );
 
       // Note: username is optional (handy-platform tokens may use userId as username)

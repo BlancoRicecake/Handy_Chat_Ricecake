@@ -11,6 +11,7 @@ export interface RoomListItem {
   partner: {
     id: string;
     username: string;
+    avatar?: string;
   };
   lastMessage?: {
     id: string;
@@ -116,7 +117,7 @@ export class RoomsService {
       return {
         roomId,
         partner: partner
-          ? { id: partner.mainServerId, username: partner.username }
+          ? { id: partner.mainServerId, username: partner.username, avatar: partner.avatar }
           : { id: partnerId, username: 'Unknown User' },
         lastMessage: lastMessage
           ? {

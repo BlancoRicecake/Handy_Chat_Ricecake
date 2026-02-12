@@ -17,6 +17,13 @@ export class User extends Document {
   @Prop({ required: true })
   username!: string;
 
+  /**
+   * 프로필 이미지 URL (캐시)
+   * 메인서버에서 변경 시 JWT를 통해 자동 업데이트
+   */
+  @Prop()
+  avatar?: string;
+
   @Prop()
   createdAt?: Date;
 
