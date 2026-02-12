@@ -102,7 +102,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
@@ -145,7 +145,7 @@ jobs:
             echo "========================================="
 
       - name: Run health check
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
